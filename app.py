@@ -8,7 +8,7 @@ import streamlit.components.v1 as components
 # --- 1. CONFIGURACIÓN ---
 ARCHIVO_MARCACIONES = "marcacion.csv"
 ARCHIVO_EMPLEADOS = "empleados.csv"
-LOGO_PATH = "logo_lobo.png"
+LOGO_PATH = "logo_lobo.png" 
 
 def inicializar_sistema():
     if not os.path.exists(ARCHIVO_MARCACIONES) or os.stat(ARCHIVO_MARCACIONES).st_size == 0:
@@ -39,27 +39,55 @@ st.set_page_config(page_title="Sr. Lobo BPO - Asistencia", layout="centered")
 inicializar_sistema()
 df_empleados = pd.read_csv(ARCHIVO_EMPLEADOS)
 
-# BARRA LATERAL
+# BARRA LATERAL CON ACCESO RESTRINGIDO
 st.sidebar.title("🐺 Gestión")
-modo = st.sidebar.radio("Navegación:", ["Marcación", "Reporte Nómina"])
+acceso_admin = st.sidebar.checkbox("Acceso Administrador")
+
+if acceso_admin:
+    password = st.sidebar.text_input("Ingrese Contraseña:", type="password")
+    if password == "Lobo2026": # ESTA ES TU CLAVE, PUEDES CAMBIARLA
+        modo = st.sidebar.radio("Navegación:", ["Marcación", "Reporte Nómina"])
+    else:
+        st.sidebar.warning("Clave requerida para ver reportes")
+        modo = "Marcación"
+else:
+    modo = "Marcación"
 
 if modo == "Marcación":
-    # DISEÑO: Lobo izquierda, Letras centro
+    # DISEÑO: Logo izquierda (si existe), Letras centro
     col_logo, col_titulo = st.columns([1, 4])
     with col_logo:
         if os.path.exists(LOGO_PATH):
-            st.image(LOGO_PATH, width=120)
+            st.image(LOGO_PATH, width=150)
+        else:
+            st.markdown("### 🐺") # Muestra un emoji si la imagen no carga
+            
     with col_titulo:
         st.markdown("<h1 style='text-align: center; color: #1E3A8A; margin-top: 10px; font-family: Arial;'>SR. LOBO BPO SOLUTIONS SAC</h1>", unsafe_allow_html=True)
         st.markdown("<p style='text-align: center; color: gray; font-weight: bold;'>CONTROL DE ASISTENCIA</p>", unsafe_allow_html=True)
     
     st.divider()
 
-    # CONTROL DE ESTADO
     if "reset_key" not in st.session_state: st.session_state.reset_key = 0
     if "mostrando_obs" not in st.session_state: st.session_state.mostrando_obs = False
 
-    # Input Principal
+    # --- SCRIPT DE FOCO (RESTABLECIDO) ---
+    components.html(
+        f"""
+        <script>
+            function forzarFoco() {{
+                const inputs = window.parent.document.querySelectorAll('input[type="text"]');
+                if (inputs.length > 0) {{
+                    inputs[0].focus();
+                }}
+            }}
+            setTimeout(forzarFoco, 400);
+            setTimeout(forzarFoco, 1200);
+        </script>
+        """,
+        height=0,
+    )
+
     dni = st.text_input("DIGITE SU DNI Y PRESIONE ENTER:", key=f"dni_input_{st.session_state.reset_key}")
 
     if dni:
@@ -112,24 +140,6 @@ if modo == "Marcación":
             time.sleep(1)
             st.session_state.reset_key += 1
             st.rerun()
-
-    # --- SCRIPT DE FOCO AL FINAL (PARA ASEGURAR EJECUCIÓN) ---
-    components.html(
-        f"""
-        <script>
-            var inputs = window.parent.document.querySelectorAll('input[type="text"]');
-            if (inputs.length > 0) {{
-                inputs[0].focus();
-            }}
-            // Reintento por si el rerun tarda
-            setTimeout(function() {{
-                var inputs = window.parent.document.querySelectorAll('input[type="text"]');
-                if (inputs.length > 0) {{ inputs[0].focus(); }}
-            }}, 500);
-        </script>
-        """,
-        height=0,
-    )
 
 elif modo == "Reporte Nómina":
     st.header("💰 Historial de Marcaciones")
