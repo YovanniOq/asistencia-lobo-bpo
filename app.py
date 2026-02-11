@@ -1,6 +1,6 @@
 import streamlit as st
 from streamlit_gsheets import GSheetsConnection
-import pd
+import pandas as pd
 from datetime import datetime, timedelta, timezone
 import os
 import time
@@ -14,7 +14,7 @@ LOGO_ARCHIVO = "logo_lobo.png"
 def obtener_hora_peru():
     return datetime.now(timezone.utc) - timedelta(hours=5)
 
-# --- 2. FUNCIÓN DE GUARDADO (Definida arriba para evitar errores) ---
+# --- 2. FUNCIÓN DE GUARDADO ---
 def guardar_datos(dni, nombre, tipo, url, con_obj):
     try:
         ahora = obtener_hora_peru()
@@ -27,10 +27,8 @@ def guardar_datos(dni, nombre, tipo, url, con_obj):
             "Observacion": "",
             "Tardanza_Min": 0
         }])
-        # Leemos el estado actual de Sheet1
         df_actual = con_obj.read(spreadsheet=url, worksheet="Sheet1", ttl=0)
         df_final = pd.concat([df_actual, nueva_fila], ignore_index=True)
-        # Actualizamos la nube
         con_obj.update(spreadsheet=url, worksheet="Sheet1", data=df_final)
         
         st.balloons()
@@ -44,7 +42,7 @@ def guardar_datos(dni, nombre, tipo, url, con_obj):
 # --- 3. INTERFAZ Y FOCO AUTOMÁTICO ---
 st.set_page_config(page_title="Asistencia Lobo", layout="wide")
 
-# SCRIPT DE FOCO: Cursor siempre listo en el DNI
+# SCRIPT DE FOCO: Cursor siempre parpadeando en el DNI
 components.html("""
     <script>
     function setFocus(){
@@ -55,7 +53,7 @@ components.html("""
     </script>
 """, height=0)
 
-# Diseño del Encabezado
+# Encabezado sin SAC
 col_logo, col_titulo = st.columns([1, 4])
 with col_logo:
     if os.path.exists(LOGO_ARCHIVO):
@@ -92,7 +90,6 @@ if dni:
             nombre = emp.iloc[0]['Nombre']
             st.success(f"👤 TRABAJADOR: {nombre}")
             
-            # Botones en una sola fila
             b1, b2, b3, b4 = st.columns(4)
             with b1:
                 if st.button("📥 INGRESO", use_container_width=True):
