@@ -7,7 +7,6 @@ import time
 import streamlit.components.v1 as components
 
 # --- 1. CONFIGURACIÓN ---
-HORA_ENTRADA_OFICIAL = "08:00:00"
 LOGO_ARCHIVO = "logo_lobo.png"
 
 def obtener_hora_peru():
@@ -37,14 +36,14 @@ with st.sidebar:
         if clave == "Lobo2026":
             modo = st.radio("Módulo:", ["Marcación", "Historial Mensual"])
 
-# Encabezado sin SAC
+# Encabezado
 col_logo, col_titulo = st.columns([1, 4])
 with col_logo:
     if os.path.exists(LOGO_ARCHIVO):
         st.image(LOGO_ARCHIVO, width=180)
 with col_titulo:
     st.markdown("<h1 style='color: #1E3A8A; font-size: 38px; margin-top: 15px;'>SR. LOBO BPO SOLUTIONS</h1>", unsafe_allow_html=True)
-    st.write(f"🕒 Hora: **{obtener_hora_peru().strftime('%H:%M:%S')}**")
+    st.write(f"🕒 Hora actual: **{obtener_hora_peru().strftime('%H:%M:%S')}**")
 
 st.divider()
 
@@ -52,8 +51,8 @@ st.divider()
 conn = st.connection("gsheets", type=GSheetsConnection)
 url_hoja = st.secrets["connections"]["gsheets"]["spreadsheet"]
 
-# --- 4. FUNCIÓN DE GUARDADO (ELIMINA EL ERROR 200) ---
-def registrar_final(dni, nombre, tipo, obs=""):
+# --- 4. FUNCIÓN DE GUARDADO (CAPTURA EL ERROR 200) ---
+def registrar_asistencia(dni, nombre, tipo, obs=""):
     try:
         ahora = obtener_hora_peru()
         nueva_fila = pd.DataFrame([{
@@ -64,33 +63,33 @@ def registrar_final(dni, nombre, tipo, obs=""):
         df_actual = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
         df_final = pd.concat([df_actual, nueva_fila], ignore_index=True)
         
-        # Intentamos actualizar
+        # Intento de actualización
         conn.update(spreadsheet=url_hoja, worksheet="Sheet1", data=df_final)
         
-        # Si llegamos aquí sin error, todo bien
+        # Éxito estándar
         st.balloons()
-        st.success(f"✅ {tipo} registrado.")
+        st.success(f"✅ {tipo} registrado correctamente.")
         time.sleep(2)
         st.session_state.reset_key += 1
-        st.session_state.pidiendo_obs = False
+        st.session_state.esperando_motivo = False
         st.rerun()
-        
+
     except Exception as e:
-        # TRUCO: Si el error contiene "200", es un éxito disfrazado. Forzamos el avance.
+        # SI EL ERROR ES "200", LO TRATAMOS COMO ÉXITO
         if "200" in str(e) or "OK" in str(e):
             st.balloons()
-            st.success(f"✅ {tipo} enviado a Drive.")
+            st.success(f"✅ {tipo} enviado a la nube.")
             time.sleep(2)
             st.session_state.reset_key += 1
-            st.session_state.pidiendo_obs = False
+            st.session_state.esperando_motivo = False
             st.rerun()
         else:
-            st.error(f"Error real al guardar: {e}")
+            st.error(f"Fallo en el registro: {e}")
 
 # --- 5. LÓGICA DE MARCACIÓN ---
 if modo == "Marcación":
     if "reset_key" not in st.session_state: st.session_state.reset_key = 0
-    if "pidiendo_obs" not in st.session_state: st.session_state.pidiendo_obs = False
+    if "esperando_motivo" not in st.session_state: st.session_state.esperando_motivo = False
     
     st.write("### DIGITE SU DNI:")
     c_dni, _ = st.columns([1, 3])
@@ -106,39 +105,39 @@ if modo == "Marcación":
                 nombre = emp.iloc[0]['Nombre']
                 st.info(f"👤 TRABAJADOR: {nombre}")
                 
-                # VALIDAR FLUJO CON LA NUBE
-                df_nube = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
+                # Leer estado actual en Drive para bloquear botones
+                df_cloud = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
                 hoy = obtener_hora_peru().strftime("%Y-%m-%d")
-                marcs_hoy = df_nube[(df_nube['DNI'].astype(str) == str(dni)) & (df_nube['Fecha'] == hoy)]
+                marcs_hoy = df_cloud[(df_cloud['DNI'].astype(str) == str(dni)) & (df_cloud['Fecha'] == hoy)]
                 
                 ultimo = marcs_hoy.iloc[-1]['Tipo'] if not marcs_hoy.empty else "NADA"
 
                 if ultimo == "SALIDA":
-                    st.warning("🚫 Ya marcaste salida hoy.")
+                    st.warning("🚫 Registro de hoy finalizado.")
                 else:
-                    col1, col2, col3, col4 = st.columns(4)
-                    with col1: # INGRESO: Solo si no hay nada hoy
+                    b1, b2, b3, b4 = st.columns(4)
+                    with b1: # INGRESO: Solo si no hay nada hoy
                         if st.button("📥 INGRESO", disabled=(ultimo != "NADA"), use_container_width=True):
-                            registrar_final(dni, nombre, "INGRESO")
-                    with col2: # PERMISO: Solo si ya ingresó
+                            registrar_asistencia(dni, nombre, "INGRESO")
+                    with b2: # PERMISO: Requiere motivo
                         if st.button("🚶 PERMISO", disabled=(ultimo not in ["INGRESO", "RETORNO_PERMISO"]), use_container_width=True):
-                            st.session_state.pidiendo_obs = True
-                    with col3: # RETORNO: Solo si está en permiso
+                            st.session_state.esperando_motivo = True
+                    with b3: # RETORNO: Solo si está en permiso
                         if st.button("🔙 RETORNO", disabled=(ultimo != "SALIDA_PERMISO"), use_container_width=True):
-                            registrar_final(dni, nombre, "RETORNO_PERMISO")
-                    with col4: # SALIDA: Solo si ya ingresó
+                            registrar_asistencia(dni, nombre, "RETORNO_PERMISO")
+                    with b4: # SALIDA
                         if st.button("📤 SALIDA", disabled=(ultimo not in ["INGRESO", "RETORNO_PERMISO"]), use_container_width=True):
-                            registrar_final(dni, nombre, "SALIDA")
+                            registrar_asistencia(dni, nombre, "SALIDA")
 
-                    if st.session_state.pidiendo_obs:
+                    if st.session_state.esperando_motivo:
                         st.divider()
                         motivo = st.text_input("MOTIVO DEL PERMISO (Escriba y presione ENTER):")
                         if motivo:
-                            registrar_final(dni, nombre, "SALIDA_PERMISO", obs=motivo)
+                            registrar_asistencia(dni, nombre, "SALIDA_PERMISO", obs=motivo)
             else:
                 st.error("DNI no registrado.")
         except Exception as e:
-            st.error(f"Error de sistema: {e}")
+            st.error(f"Error de base de datos: {e}")
 
 elif modo == "Historial Mensual":
     st.header("📋 Reporte")
