@@ -14,7 +14,7 @@ LOGO_ARCHIVO = "logo_lobo.png"
 def obtener_hora_peru():
     return datetime.now(timezone.utc) - timedelta(hours=5)
 
-# --- 2. INTERFAZ Y DISEÑO ---
+# --- 2. INTERFAZ Y ESTILO ---
 st.set_page_config(page_title="Asistencia Sr. Lobo", layout="wide")
 
 # Script para el Foco Automático
@@ -58,7 +58,8 @@ with st.sidebar:
 # --- 4. LÓGICA DE REGISTRO ---
 def registrar_en_nube(dni, nombre, tipo, obs=""):
     try:
-        df_act = conn.read(spreadsheet=url_hoja, ttl=0)
+        # Forzamos la lectura de Sheet1
+        df_act = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
         ahora = obtener_hora_peru()
         hora_act = ahora.strftime("%H:%M:%S")
         tardanza = 0
@@ -70,13 +71,13 @@ def registrar_en_nube(dni, nombre, tipo, obs=""):
         
         nueva = pd.DataFrame([{"DNI": str(dni), "Nombre": nombre, "Fecha": ahora.strftime("%Y-%m-%d"), "Hora": hora_act, "Tipo": tipo, "Observacion": obs, "Tardanza_Min": tardanza}])
         df_final = pd.concat([df_act, nueva], ignore_index=True)
-        conn.update(spreadsheet=url_hoja, data=df_final)
+        conn.update(spreadsheet=url_hoja, worksheet="Sheet1", data=df_final)
         st.success(f"✅ {tipo} guardado correctamente.")
         time.sleep(1)
         st.session_state.reset_key += 1
         st.rerun()
     except Exception as e:
-        st.error(f"Error al guardar: {e}")
+        st.error(f"Error al guardar. Verifica la Fila 1 de tu Excel: {e}")
 
 # --- 5. MÓDULOS ---
 if modo == "Marcación":
@@ -86,7 +87,7 @@ if modo == "Marcación":
 
     st.write("### DIGITE SU DNI Y PRESIONE ENTER:")
     
-    # Caja chica de DNI (ocupa 1/4 del ancho de la pantalla)
+    # Caja chica de DNI (solo ocupa 1/4 de la pantalla)
     c_dni, c_vacio = st.columns([1, 3])
     with c_dni:
         dni = st.text_input("", key=f"dni_{st.session_state.reset_key}", label_visibility="collapsed")
@@ -98,13 +99,16 @@ if modo == "Marcación":
             st.markdown(f"<h2 style='color: #2E7D32;'>👤 Bienvenido: {nombre}</h2>", unsafe_allow_html=True)
             
             try:
-                df_cloud = conn.read(spreadsheet=url_hoja, ttl=0)
+                # Lectura de la nube
+                df_cloud = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
                 hoy = obtener_hora_peru().strftime("%Y-%m-%d")
+                
+                # Filtrar marcaciones de hoy
                 marcs = df_cloud[(df_cloud['DNI'].astype(str) == str(dni)) & (df_cloud['Fecha'] == hoy)]
                 est = marcs.iloc[-1]['Tipo'] if not marcs.empty else "SIN MARCAR"
 
                 if est == "SALIDA":
-                    st.warning("🚫 Turno finalizado hoy.")
+                    st.warning("🚫 Turno finalizado por hoy.")
                     time.sleep(2)
                     st.session_state.reset_key += 1
                     st.rerun()
@@ -129,8 +133,8 @@ if modo == "Marcación":
                         if motivo:
                             registrar_en_nube(dni, nombre, "SALIDA_PERMISO", obs=motivo)
                             st.session_state.mostrando_obs = False
-            except:
-                st.error("Error al leer Google Sheets. Verifica que la Fila 1 tenga los nombres correctos.")
+            except Exception as e:
+                st.error(f"Error al leer Google Sheets. Asegúrate de tener los títulos en la Fila 1.")
         else:
             st.error("DNI no registrado.")
             time.sleep(1)
@@ -138,9 +142,9 @@ if modo == "Marcación":
             st.rerun()
 
 elif modo == "Historial Mensual":
-    st.header("📊 Historial General")
+    st.header("📊 Historial General (Google Sheets)")
     try:
-        df_nube = conn.read(spreadsheet=url_hoja, ttl=0)
+        df_nube = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
         st.dataframe(df_nube, use_container_width=True)
     except:
         st.error("No se pudo cargar el historial.")
