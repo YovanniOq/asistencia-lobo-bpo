@@ -138,3 +138,9 @@ if modo == "Marcación":
             else:
                 st.error("DNI no registrado.")
         except Exception as e:
+            st.error(f"Error de sistema: {e}")
+
+elif modo == "Historial Mensual":
+    st.header("📋 Reporte")
+    df_nube = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
+    st.dataframe(df_nube, use_container_width=True)
