@@ -16,6 +16,14 @@ def inicializar_sistema():
     if not os.path.exists(ARCHIVO_EMPLEADOS) or os.stat(ARCHIVO_EMPLEADOS).st_size == 0:
         pd.DataFrame(columns=["DNI", "Nombre", "Salario"]).to_csv(ARCHIVO_EMPLEADOS, index=False)
 
+def obtener_ultimo_registro(dni):
+    try:
+        df = pd.read_csv(ARCHIVO_MARCACIONES)
+        hoy = datetime.now().strftime('%Y-%m-%d')
+        reg = df[(df['DNI'].astype(str) == str(dni)) & (df['Fecha'] == hoy)]
+        return reg.iloc[-1] if not reg.empty else None
+    except: return None
+
 def registrar(dni, nombre, tipo, obs="", tardanza=0):
     ahora = datetime.now()
     nueva_fila = {
@@ -44,24 +52,24 @@ if acceso_admin:
         st.sidebar.error("Clave incorrecta")
 
 if modo == "Marcación":
-    # ENCABEZADO: Lobo izquierda, Texto centro
-    col1, col2 = st.columns([1, 4])
+    # ENCABEZADO: Lobo más grande (col 1.5) y Texto centro
+    col1, col2 = st.columns([1.5, 4])
     with col1:
         if os.path.exists(LOGO_NOMBRE):
-            st.image(LOGO_NOMBRE, width=120)
+            st.image(LOGO_NOMBRE, width=180) # Logo más grande
         else:
-            st.write("⚠️")
-            st.caption("Recargar página")
+            st.write("🐺")
             
     with col2:
-        st.markdown("<h1 style='text-align: center; color: #1E3A8A; font-family: Arial;'>SR. LOBO BPO SOLUTIONS SAC</h1>", unsafe_allow_html=True)
+        st.markdown("<h1 style='text-align: center; color: #1E3A8A; font-family: Arial; margin-top: 15px;'>SR. LOBO BPO SOLUTIONS SAC</h1>", unsafe_allow_html=True)
         st.markdown("<p style='text-align: center; color: gray; font-weight: bold;'>CONTROL DE ASISTENCIA</p>", unsafe_allow_html=True)
     
     st.divider()
 
     if "reset_key" not in st.session_state: st.session_state.reset_key = 0
+    if "mostrando_obs" not in st.session_state: st.session_state.mostrando_obs = False
     
-    # FOCO AUTOMÁTICO (Vuelve al campo después de registrar)
+    # FOCO AUTOMÁTICO
     components.html(f"""<script>window.parent.document.querySelectorAll('input[type="text"]')[0].focus();</script>""", height=0)
 
     dni = st.text_input("DIGITE SU DNI Y PRESIONE ENTER:", key=f"dni_{st.session_state.reset_key}")
@@ -70,23 +78,42 @@ if modo == "Marcación":
         emp = df_empleados[df_empleados['DNI'].astype(str) == str(dni)]
         if not emp.empty:
             nombre = emp.iloc[0]['Nombre']
-            st.success(f"👤 Bienvenido: {nombre}")
+            ult = obtener_ultimo_registro(dni)
+            est = ult['Tipo'] if ult is not None else "SIN MARCAR"
+            
+            st.success(f"👤 {nombre} | Estado: {est}")
+            
             c1, c2 = st.columns(2)
+            c3, c4 = st.columns(2)
+
             with c1:
-                if st.button("📥 INGRESO", use_container_width=True, type="primary"):
+                if st.button("📥 INGRESO", use_container_width=True, type="primary", disabled=(est != "SIN MARCAR")):
                     registrar(dni, nombre, "INGRESO")
-                    st.session_state.reset_key += 1
-                    st.rerun()
+                    st.session_state.reset_key += 1; st.rerun()
+
+            with c3:
+                if st.button("🚶 SALIDA PERMISO", use_container_width=True, disabled=(est != "INGRESO")):
+                    st.session_state.mostrando_obs = True
+
+            if st.session_state.mostrando_obs:
+                motivo = st.text_input("MOTIVO DEL PERMISO (Enter):", key=f"mot_{st.session_state.reset_key}")
+                if motivo:
+                    registrar(dni, nombre, "SALIDA_PERMISO", obs=motivo)
+                    st.session_state.mostrando_obs = False
+                    st.session_state.reset_key += 1; st.rerun()
+
+            with c4:
+                if st.button("🔙 RETORNO PERMISO", use_container_width=True, disabled=(est != "SALIDA_PERMISO")):
+                    registrar(dni, nombre, "RETORNO_PERMISO")
+                    st.session_state.reset_key += 1; st.rerun()
+
             with c2:
-                if st.button("📤 SALIDA FINAL", use_container_width=True):
+                if st.button("📤 SALIDA FINAL", use_container_width=True, disabled=(est not in ["INGRESO", "RETORNO_PERMISO"])):
                     registrar(dni, nombre, "SALIDA")
-                    st.session_state.reset_key += 1
-                    st.rerun()
+                    st.session_state.reset_key += 1; st.rerun()
         else:
             st.error("DNI no registrado")
-            time.sleep(1)
-            st.session_state.reset_key += 1
-            st.rerun()
+            time.sleep(1); st.session_state.reset_key += 1; st.rerun()
 
 elif modo == "Reporte Nómina":
     st.header("💰 Reporte Administrativo")
