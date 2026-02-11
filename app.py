@@ -17,7 +17,6 @@ def obtener_hora_peru():
 # --- 2. INTERFAZ Y FOCO ---
 st.set_page_config(page_title="Asistencia Lobo", layout="wide")
 
-# Script para mantener el cursor siempre listo en el DNI
 components.html("""
     <script>
     function setFocus(){
@@ -30,7 +29,7 @@ components.html("""
     </script>
 """, height=0)
 
-# Menú Lateral para Administrador
+# Menú Lateral
 with st.sidebar:
     st.title("🐺 Gestión Lobo")
     modo = "Marcación"
@@ -38,10 +37,8 @@ with st.sidebar:
         clave = st.text_input("Contraseña:", type="password")
         if clave == "Lobo2026":
             modo = st.radio("Módulo:", ["Marcación", "Historial Mensual"])
-        elif clave != "":
-            st.error("Clave incorrecta")
 
-# Encabezado sin SAC
+# Encabezado
 col_logo, col_titulo = st.columns([1, 4])
 with col_logo:
     if os.path.exists(LOGO_ARCHIVO):
@@ -53,86 +50,94 @@ with col_titulo:
 st.divider()
 
 # --- 3. CONEXIÓN ---
-try:
-    conn = st.connection("gsheets", type=GSheetsConnection)
-    url_hoja = st.secrets["connections"]["gsheets"]["spreadsheet"]
-except:
-    st.error("Fallo de conexión. Verifica tus Secrets.")
+conn = st.connection("gsheets", type=GSheetsConnection)
+url_hoja = st.secrets["connections"]["gsheets"]["spreadsheet"]
 
-# --- 4. FUNCIÓN DE GUARDADO (Captura el Response 200 como Éxito) ---
-def registrar(dni, nombre, tipo):
+# --- 4. FUNCIÓN DE GUARDADO ---
+def registrar(dni, nombre, tipo, obs=""):
     try:
         ahora = obtener_hora_peru()
         nueva_fila = pd.DataFrame([{
             "DNI": str(dni), "Nombre": nombre, "Fecha": ahora.strftime("%Y-%m-%d"),
-            "Hora": ahora.strftime("%H:%M:%S"), "Tipo": tipo, "Observacion": "", "Tardanza_Min": 0
+            "Hora": ahora.strftime("%H:%M:%S"), "Tipo": tipo, "Observacion": obs, "Tardanza_Min": 0
         }])
-        
         df_actual = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
         df_final = pd.concat([df_actual, nueva_fila], ignore_index=True)
-        
-        # Intentamos actualizar
         conn.update(spreadsheet=url_hoja, worksheet="Sheet1", data=df_final)
-        
         st.balloons()
-        st.success(f"✅ {tipo} registrado correctamente.")
+        st.success(f"✅ {tipo} registrado.")
         time.sleep(2)
         st.session_state.reset_key += 1
+        st.session_state.mostrar_obs = False
         st.rerun()
     except Exception as e:
-        # Si Google responde 200, es que sí guardó aunque la librería de error
-        if "200" in str(e):
+        if "200" in str(e): # Manejo del bug de respuesta 200
             st.balloons()
-            st.success(f"✅ {tipo} guardado en Drive.")
+            st.success(f"✅ {tipo} guardado.")
             time.sleep(2)
             st.session_state.reset_key += 1
+            st.session_state.mostrar_obs = False
             st.rerun()
         else:
-            st.error(f"Error al guardar: {e}")
+            st.error(f"Error: {e}")
 
-# --- 5. LÓGICA DE PANTALLA ---
+# --- 5. LÓGICA DE MARCACIÓN ---
 if modo == "Marcación":
     if "reset_key" not in st.session_state: st.session_state.reset_key = 0
+    if "mostrar_obs" not in st.session_state: st.session_state.mostrar_obs = False
     
-    st.write("### DIGITE SU DNI Y PRESIONE ENTER:")
+    st.write("### DIGITE SU DNI:")
     c_dni, _ = st.columns([1, 3])
     with c_dni:
         dni = st.text_input("", key=f"dni_{st.session_state.reset_key}", label_visibility="collapsed")
 
     if dni:
-        try:
-            df_emp = pd.read_csv("empleados.csv")
-            emp = df_emp[df_emp['DNI'].astype(str) == str(dni)]
+        df_emp = pd.read_csv("empleados.csv")
+        emp = df_emp[df_emp['DNI'].astype(str) == str(dni)]
+        
+        if not emp.empty:
+            nombre = emp.iloc[0]['Nombre']
+            st.info(f"👤 TRABAJADOR: {nombre}")
             
-            if not emp.empty:
-                nombre = emp.iloc[0]['Nombre']
-                st.success(f"👤 TRABAJADOR: {nombre}")
-                
-                b1, b2, b3, b4 = st.columns(4)
-                with b1:
-                    if st.button("📥 INGRESO", use_container_width=True):
-                        registrar(dni, nombre, "INGRESO")
-                with b2:
-                    if st.button("🚶 PERMISO", use_container_width=True):
-                        registrar(dni, nombre, "SALIDA_PERMISO")
-                with b3:
-                    if st.button("🔙 RETORNO", use_container_width=True):
-                        registrar(dni, nombre, "RETORNO_PERMISO")
-                with b4:
-                    if st.button("📤 SALIDA", use_container_width=True):
-                        registrar(dni, nombre, "SALIDA")
+            # Consultar último estado en la nube
+            df_nube = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
+            hoy = obtener_hora_peru().strftime("%Y-%m-%d")
+            marcs_hoy = df_nube[(df_nube['DNI'].astype(str) == str(dni)) & (df_nube['Fecha'] == hoy)]
+            
+            ultimo_estado = marcs_hoy.iloc[-1]['Tipo'] if not marcs_hoy.empty else "NADA"
+
+            if ultimo_estado == "SALIDA":
+                st.warning("🚫 Ya registraste tu salida por hoy.")
             else:
-                st.error("DNI no registrado.")
-                time.sleep(1)
-                st.session_state.reset_key += 1
-                st.rerun()
-        except Exception as e:
-            st.error(f"Error de lectura local: {e}")
+                col1, col2, col3, col4 = st.columns(4)
+                
+                # REGLAS DE BOTONES
+                with col1: # INGRESO: Solo si no ha marcado nada hoy
+                    if st.button("📥 INGRESO", disabled=(ultimo_estado != "NADA"), use_container_width=True):
+                        registrar(dni, nombre, "INGRESO")
+                
+                with col2: # PERMISO: Solo si está en INGRESO o RETORNO
+                    if st.button("🚶 PERMISO", disabled=(ultimo_estado not in ["INGRESO", "RETORNO_PERMISO"]), use_container_width=True):
+                        st.session_state.mostrar_obs = True
+                
+                with col3: # RETORNO: Solo si está en PERMISO
+                    if st.button("🔙 RETORNO", disabled=(ultimo_estado != "SALIDA_PERMISO"), use_container_width=True):
+                        registrar(dni, nombre, "RETORNO_PERMISO")
+                
+                with col4: # SALIDA: Solo si no ha marcado salida aún y ya ingresó
+                    if st.button("📤 SALIDA", disabled=(ultimo_estado not in ["INGRESO", "RETORNO_PERMISO"]), use_container_width=True):
+                        registrar(dni, nombre, "SALIDA")
+
+                # Cuadro de observaciones para Permiso
+                if st.session_state.mostrar_obs:
+                    st.divider()
+                    obs = st.text_input("Escriba el motivo del permiso y presione ENTER:")
+                    if obs:
+                        registrar(dni, nombre, "SALIDA_PERMISO", obs=obs)
+        else:
+            st.error("DNI no registrado.")
 
 elif modo == "Historial Mensual":
-    st.header("📋 Reporte de Asistencias en Drive")
-    try:
-        df_nube = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
-        st.dataframe(df_nube, use_container_width=True)
-    except:
-        st.error("No se pudo cargar el historial desde la nube.")
+    st.header("📋 Historial")
+    df_nube = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
+    st.dataframe(df_nube, use_container_width=True)
