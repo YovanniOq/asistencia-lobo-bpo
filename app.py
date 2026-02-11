@@ -16,66 +16,93 @@ def obtener_hora_peru():
 # --- 2. INTERFAZ ---
 st.set_page_config(page_title="Asistencia Sr. Lobo", layout="wide")
 
-# CSS para el diseño compacto que pediste
-st.markdown("""
-    <style>
-    .stTextInput { width: 250px !important; }
-    .main-title { font-size: 35px !important; font-weight: bold; color: #1E3A8A; }
-    </style>
-""", unsafe_allow_html=True)
-
-# Encabezado: Logo y Título
+# Título sin SAC y Caja de DNI chica
 col_l, col_t = st.columns([1, 4])
 with col_l:
     if os.path.exists(LOGO_ARCHIVO):
         st.image(LOGO_ARCHIVO, width=180)
 with col_t:
-    st.markdown('<p class="main-title">SR. LOBO BPO SOLUTIONS SAC</p>', unsafe_allow_html=True)
+    st.markdown("<h1 style='color: #1E3A8A; font-size: 40px;'>SR. LOBO BPO SOLUTIONS</h1>", unsafe_allow_html=True)
+    st.write(f"🕒 Hora actual: **{obtener_hora_peru().strftime('%H:%M:%S')}**")
 
 st.divider()
 
-# --- 3. CONEXIÓN ROBUSTA ---
+# --- 3. CONEXIÓN ---
 try:
-    # Forzamos la limpieza de la llave privada del JSON
-    secrets_dict = st.secrets["connections"]["gsheets"].to_dict()
-    if "\\n" in secrets_dict["private_key"]:
-        secrets_dict["private_key"] = secrets_dict["private_key"].replace("\\n", "\n")
-    
     conn = st.connection("gsheets", type=GSheetsConnection)
     url_hoja = st.secrets["connections"]["gsheets"]["spreadsheet"]
 except Exception as e:
-    st.error(f"Error técnico en la llave JSON: {e}")
+    st.error(f"Error de conexión inicial: {e}")
 
-# --- 4. LÓGICA DE MARCACIÓN ---
+# --- 4. MARCACIÓN ---
 if "reset_key" not in st.session_state: st.session_state.reset_key = 0
 
-st.subheader("DIGITE SU DNI Y PRESIONE ENTER:")
-# Caja de DNI chica como pediste
-dni = st.text_input("", key=f"dni_{st.session_state.reset_key}", label_visibility="collapsed")
+st.write("### DIGITE SU DNI Y PRESIONE ENTER:")
+c_dni, c_vacio = st.columns([1, 3])
+with c_dni:
+    dni = st.text_input("", key=f"dni_{st.session_state.reset_key}", label_visibility="collapsed")
 
 if dni:
     try:
-        # Cargamos empleados locales
-        df_empleados = pd.read_csv("empleados.csv")
-        emp = df_empleados[df_empleados['DNI'].astype(str) == str(dni)]
+        # Carga de empleados local
+        df_emp = pd.read_csv("empleados.csv")
+        emp = df_emp[df_emp['DNI'].astype(str) == str(dni)]
         
         if not emp.empty:
             nombre = emp.iloc[0]['Nombre']
             st.success(f"👤 TRABAJADOR: {nombre}")
             
-            # LEER NUBE (Aquí es donde daba el error)
-            # Usamos ttl=0 para que no use memoria vieja y vea tus títulos nuevos
-            df_cloud = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
-            
-            # BOTONES
-            c1, c2, c3, c4 = st.columns(4)
-            with c1:
-                if st.button("📥 INGRESO", use_container_width=True):
-                    # Lógica de guardado...
-                    st.info("Guardando en la nube...")
-                    # (Aquí iría la función de registrar_en_nube que ya tenemos)
+            # Intentar leer la nube de forma ultra-flexible
+            try:
+                # Leemos TODO sin validar columnas primero para evitar el error rojo
+                df_cloud = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
+                
+                # BOTONES (Sin filtros para que no falle)
+                c1, c2, c3, c4 = st.columns(4)
+                with c1:
+                    if st.button("📥 INGRESO", use_container_width=True):
+                        registrar_asistencia(dni, nombre, "INGRESO", url_hoja, conn)
+                with c2:
+                    if st.button("🚶 PERMISO", use_container_width=True):
+                        registrar_asistencia(dni, nombre, "SALIDA_PERMISO", url_hoja, conn)
+                with c3:
+                    if st.button("🔙 RETORNO", use_container_width=True):
+                        registrar_asistencia(dni, nombre, "RETORNO_PERMISO", url_hoja, conn)
+                with c4:
+                    if st.button("📤 SALIDA", use_container_width=True):
+                        registrar_asistencia(dni, nombre, "SALIDA", url_hoja, conn)
+            except:
+                st.error("Error al conectar con la pestaña Sheet1. Revisa que el nombre sea exacto.")
         else:
-            st.error("DNI no registrado en empleados.csv")
+            st.error("DNI no registrado.")
     except Exception as e:
-        st.error(f"Error de acceso: El sistema no reconoce las columnas. Verifica que en Sheet1 diga exactamente: DNI, Nombre, Fecha, Hora, Tipo, Observacion, Tardanza_Min")
-        st.info("💡 Consejo: Asegúrate de que no haya filas vacías arriba de los títulos en Google Sheets.")
+        st.error(f"Error crítico: {e}")
+
+def registrar_asistencia(dni, nombre, tipo, url, con_obj):
+    try:
+        ahora = obtener_hora_peru()
+        # Creamos la fila nueva
+        nueva_fila = pd.DataFrame([{
+            "DNI": str(dni), 
+            "Nombre": nombre, 
+            "Fecha": ahora.strftime("%Y-%m-%d"), 
+            "Hora": ahora.strftime("%H:%M:%S"), 
+            "Tipo": tipo,
+            "Observacion": "",
+            "Tardanza_Min": 0
+        }])
+        
+        # Leemos lo actual
+        df_actual = con_obj.read(spreadsheet=url, worksheet="Sheet1", ttl=0)
+        # Unimos
+        df_final = pd.concat([df_actual, nueva_fila], ignore_index=True)
+        # Subimos
+        con_obj.update(spreadsheet=url, worksheet="Sheet1", data=df_final)
+        
+        st.balloons()
+        st.success(f"✅ {tipo} registrado en Google Drive")
+        time.sleep(2)
+        st.session_state.reset_key += 1
+        st.rerun()
+    except Exception as e:
+        st.error(f"No se pudo guardar en la nube: {e}")
