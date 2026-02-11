@@ -32,10 +32,10 @@ def obtener_estado_hoy(dni):
 
 def registrar(dni, nombre, tipo, obs=""):
     ahora = obtener_hora_peru()
-    hora_actual = ahora.strftime("%H:%M:%S")
+    hora_str = ahora.strftime("%H:%M:%S")
     tardanza = 0
     if tipo == "INGRESO":
-        t_marcada = datetime.strptime(hora_actual, '%H:%M:%S')
+        t_marcada = datetime.strptime(hora_str, '%H:%M:%S')
         t_oficial = datetime.strptime(HORA_ENTRADA_OFICIAL, '%H:%M:%S')
         if t_marcada > t_oficial:
             dif = int((t_marcada - t_oficial).total_seconds() / 60)
@@ -43,7 +43,7 @@ def registrar(dni, nombre, tipo, obs=""):
 
     nueva_fila = {
         "DNI": dni, "Nombre": nombre, "Fecha": ahora.strftime("%Y-%m-%d"),
-        "Hora": hora_actual, "Tipo": tipo, "Observacion": obs, "Tardanza_Min": tardanza
+        "Hora": hora_str, "Tipo": tipo, "Observacion": obs, "Tardanza_Min": tardanza
     }
     df = pd.read_csv(ARCHIVO_MARCACIONES)
     pd.concat([df, pd.DataFrame([nueva_fila])], ignore_index=True).to_csv(ARCHIVO_MARCACIONES, index=False)
@@ -53,7 +53,7 @@ st.set_page_config(page_title="Sr. Lobo BPO", layout="centered")
 inicializar_sistema()
 df_empleados = pd.read_csv(ARCHIVO_EMPLEADOS)
 
-# BARRA LATERAL PRIVADA
+# BARRA LATERAL
 st.sidebar.title("🐺 Gestión")
 acceso_admin = st.sidebar.checkbox("Acceso Administrador")
 modo = "Marcación"
@@ -71,6 +71,7 @@ if modo == "Marcación":
         st.markdown("<h1 style='text-align: center; color: #1E3A8A;'>SR. LOBO BPO SOLUTIONS SAC</h1>", unsafe_allow_html=True)
     st.divider()
 
+    # FOCO INTELIGENTE (Prioriza motivo si está abierto, sino DNI)
     components.html("""<script>function setFocus(){ var ins = window.parent.document.querySelectorAll('input[type="text"]'); if(ins.length===1){ins[0].focus();}else if(ins.length>1){ins[1].focus();}} setInterval(setFocus, 500);</script>""", height=0)
 
     if "reset_key" not in st.session_state: st.session_state.reset_key = 0
@@ -84,7 +85,7 @@ if modo == "Marcación":
             nombre = emp.iloc[0]['Nombre']
             est = obtener_estado_hoy(dni)
             if est == "SALIDA":
-                st.warning(f"🚫 {nombre}, ya cerraste tu turno hoy. Vuelve mañana.")
+                st.warning(f"🚫 {nombre}, ya registraste tu salida final hoy.")
                 time.sleep(2); st.session_state.reset_key += 1; st.rerun()
             else:
                 st.success(f"👤 {nombre} | Estado: {est}")
@@ -114,21 +115,16 @@ elif modo == "Historial Mensual":
     df_m = pd.read_csv(ARCHIVO_MARCACIONES)
     df_m['Fecha'] = pd.to_datetime(df_m['Fecha'])
     
-    # Filtros de tiempo
-    meses = {1:'Enero', 2:'Febrero', 3:'Marzo', 4:'Abril', 5:'Mayo', 6:'Junio', 7:'Julio', 8:'Agosto', 9:'Septiembre', 10:'Octubre', 11:'Noviembre', 12:'Diciembre'}
     col_a, col_b = st.columns(2)
-    mes_sel = col_a.selectbox("Seleccione Mes:", options=list(meses.keys()), format_func=lambda x: meses[x], index=obtener_hora_peru().month - 1)
-    anio_sel = col_b.selectbox("Seleccione Año:", options=[2026, 2027], index=0)
+    mes_sel = col_a.selectbox("Mes:", range(1, 13), index=obtener_hora_peru().month - 1)
+    anio_sel = col_b.selectbox("Año:", [2026, 2027], index=0)
 
-    df_filtrado = df_m[(df_m['Fecha'].dt.month == mes_sel) & (df_m['Fecha'].dt.year == anio_sel)]
-    df_reporte = df_filtrado.merge(df_empleados, on="DNI", how="left")
-    
-    # Cálculo de dinero
-    df_reporte['Equivalente_Dinero'] = (df_reporte['Salario'] / 30 / 8 / 60) * df_reporte['Tardanza_Min']
-    df_reporte['Equivalente_Dinero'] = df_reporte['Equivalente_Dinero'].round(2)
+    df_f = df_m[(df_m['Fecha'].dt.month == mes_sel) & (df_m['Fecha'].dt.year == anio_sel)]
+    df_r = df_f.merge(df_empleados, on="DNI", how="left")
+    df_r['Equivalente_Dinero'] = (df_r['Salario'] / 30 / 8 / 60) * df_r['Tardanza_Min']
+    df_r['Equivalente_Dinero'] = df_r['Equivalente_Dinero'].round(2)
 
-    columnas_finales = ['Fecha', 'Nombre_x', 'Hora', 'Tipo', 'Tardanza_Min', 'Equivalente_Dinero', 'Observacion']
-    st.dataframe(df_reporte[columnas_finales], use_container_width=True)
-    
-    csv = df_reporte[columnas_finales].to_csv(index=False).encode('utf-8-sig')
-    st.download_button(f"📥 Descargar {meses[mes_sel]} {anio_sel}", data=csv, file_name=f"Reporte_{meses[mes_sel]}.csv", use_container_width=True)
+    columnas = ['Fecha', 'Nombre_x', 'Hora', 'Tipo', 'Tardanza_Min', 'Equivalente_Dinero', 'Observacion']
+    st.dataframe(df_r[columnas], use_container_width=True)
+    csv = df_r[columnas].to_csv(index=False).encode('utf-8-sig')
+    st.download_button("📥 Descargar Reporte", data=csv, file_name="Reporte_Nomina.csv", use_container_width=True)
