@@ -62,34 +62,30 @@ def registrar_asistencia(dni, nombre, tipo, obs=""):
         
         df_actual = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
         df_final = pd.concat([df_actual, nueva_fila], ignore_index=True)
-        
-        # Intento de actualización
         conn.update(spreadsheet=url_hoja, worksheet="Sheet1", data=df_final)
         
-        # Éxito estándar
         st.balloons()
-        st.success(f"✅ {tipo} registrado correctamente.")
+        st.success(f"✅ {tipo} registrado con éxito.")
         time.sleep(2)
         st.session_state.reset_key += 1
-        st.session_state.esperando_motivo = False
+        st.session_state.pidiendo_motivo = False
         st.rerun()
 
     except Exception as e:
-        # SI EL ERROR ES "200", LO TRATAMOS COMO ÉXITO
         if "200" in str(e) or "OK" in str(e):
             st.balloons()
-            st.success(f"✅ {tipo} enviado a la nube.")
+            st.success(f"✅ {tipo} enviado a Drive.")
             time.sleep(2)
             st.session_state.reset_key += 1
-            st.session_state.esperando_motivo = False
+            st.session_state.pidiendo_motivo = False
             st.rerun()
         else:
-            st.error(f"Fallo en el registro: {e}")
+            st.error(f"Error al guardar: {e}")
 
 # --- 5. LÓGICA DE MARCACIÓN ---
 if modo == "Marcación":
     if "reset_key" not in st.session_state: st.session_state.reset_key = 0
-    if "esperando_motivo" not in st.session_state: st.session_state.esperando_motivo = False
+    if "pidiendo_motivo" not in st.session_state: st.session_state.pidiendo_motivo = False
     
     st.write("### DIGITE SU DNI:")
     c_dni, _ = st.columns([1, 3])
@@ -105,7 +101,7 @@ if modo == "Marcación":
                 nombre = emp.iloc[0]['Nombre']
                 st.info(f"👤 TRABAJADOR: {nombre}")
                 
-                # Leer estado actual en Drive para bloquear botones
+                # Leer estado actual en Drive para control de botones
                 df_cloud = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
                 hoy = obtener_hora_peru().strftime("%Y-%m-%d")
                 marcs_hoy = df_cloud[(df_cloud['DNI'].astype(str) == str(dni)) & (df_cloud['Fecha'] == hoy)]
@@ -113,23 +109,23 @@ if modo == "Marcación":
                 ultimo = marcs_hoy.iloc[-1]['Tipo'] if not marcs_hoy.empty else "NADA"
 
                 if ultimo == "SALIDA":
-                    st.warning("🚫 Registro de hoy finalizado.")
+                    st.warning("🚫 Ya marcaste tu salida final por hoy.")
                 else:
                     b1, b2, b3, b4 = st.columns(4)
-                    with b1: # INGRESO: Solo si no hay nada hoy
+                    with b1: # INGRESO: Se bloquea si ya marcó algo hoy
                         if st.button("📥 INGRESO", disabled=(ultimo != "NADA"), use_container_width=True):
                             registrar_asistencia(dni, nombre, "INGRESO")
-                    with b2: # PERMISO: Requiere motivo
+                    with b2: # PERMISO: Solo si ya entró
                         if st.button("🚶 PERMISO", disabled=(ultimo not in ["INGRESO", "RETORNO_PERMISO"]), use_container_width=True):
-                            st.session_state.esperando_motivo = True
+                            st.session_state.pidiendo_motivo = True
                     with b3: # RETORNO: Solo si está en permiso
                         if st.button("🔙 RETORNO", disabled=(ultimo != "SALIDA_PERMISO"), use_container_width=True):
                             registrar_asistencia(dni, nombre, "RETORNO_PERMISO")
-                    with b4: # SALIDA
+                    with b4: # SALIDA: Solo si ya entró
                         if st.button("📤 SALIDA", disabled=(ultimo not in ["INGRESO", "RETORNO_PERMISO"]), use_container_width=True):
                             registrar_asistencia(dni, nombre, "SALIDA")
 
-                    if st.session_state.esperando_motivo:
+                    if st.session_state.pidiendo_motivo:
                         st.divider()
                         motivo = st.text_input("MOTIVO DEL PERMISO (Escriba y presione ENTER):")
                         if motivo:
@@ -137,9 +133,9 @@ if modo == "Marcación":
             else:
                 st.error("DNI no registrado.")
         except Exception as e:
-            st.error(f"Error de base de datos: {e}")
+            st.error(f"Error de sistema: {e}")
 
 elif modo == "Historial Mensual":
-    st.header("📋 Reporte")
+    st.header("📋 Reporte de Asistencias")
     df_nube = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
     st.dataframe(df_nube, use_container_width=True)
