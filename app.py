@@ -66,18 +66,19 @@ if modo == "Marcación":
     if "reset_key" not in st.session_state: st.session_state.reset_key = 0
     if "mostrando_obs" not in st.session_state: st.session_state.mostrando_obs = False
     
-    # --- SCRIPT DE FOCO ULTRA-PERSISTENTE PARA WEB ---
-    # Este script detecta cambios en la página y fuerza el foco continuamente
+    # --- SCRIPT DE FOCO INTELIGENTE ---
+    # Si hay 2 inputs, el foco va al segundo (el motivo). Si hay 1, va al DNI.
     components.html("""
         <script>
-            function setFocus() {
+            function setSmartFocus() {
                 var inputs = window.parent.document.querySelectorAll('input[type="text"]');
-                if (inputs.length > 0) {
+                if (inputs.length === 1) {
                     inputs[0].focus();
+                } else if (inputs.length > 1) {
+                    inputs[1].focus();
                 }
             }
-            // Ejecutar ráfaga post-carga
-            setInterval(setFocus, 500); 
+            setInterval(setSmartFocus, 500); 
         </script>
     """, height=0)
 
@@ -96,15 +97,15 @@ if modo == "Marcación":
             with c1:
                 if st.button("📥 INGRESO", use_container_width=True, type="primary", disabled=(est != "SIN MARCAR")):
                     registrar(dni, nombre, "INGRESO")
-                    st.session_state.reset_key += 1
-                    st.rerun()
+                    st.session_state.reset_key += 1; st.rerun()
 
             with c3:
                 if st.button("🚶 SALIDA PERMISO", use_container_width=True, disabled=(est != "INGRESO")):
                     st.session_state.mostrando_obs = True
+                    st.rerun()
 
             if st.session_state.mostrando_obs:
-                motivo = st.text_input("MOTIVO DEL PERMISO:", key=f"mot_{st.session_state.reset_key}")
+                motivo = st.text_input("ESCRIBA EL MOTIVO Y PRESIONE ENTER:", key=f"mot_{st.session_state.reset_key}")
                 if motivo:
                     registrar(dni, nombre, "SALIDA_PERMISO", obs=motivo)
                     st.session_state.mostrando_obs = False
@@ -114,14 +115,12 @@ if modo == "Marcación":
             with c4:
                 if st.button("🔙 RETORNO PERMISO", use_container_width=True, disabled=(est != "SALIDA_PERMISO")):
                     registrar(dni, nombre, "RETORNO_PERMISO")
-                    st.session_state.reset_key += 1
-                    st.rerun()
+                    st.session_state.reset_key += 1; st.rerun()
 
             with c2:
                 if st.button("📤 SALIDA FINAL", use_container_width=True, disabled=(est not in ["INGRESO", "RETORNO_PERMISO"])):
                     registrar(dni, nombre, "SALIDA")
-                    st.session_state.reset_key += 1
-                    st.rerun()
+                    st.session_state.reset_key += 1; st.rerun()
         else:
             st.error("DNI no registrado"); time.sleep(1); st.session_state.reset_key += 1; st.rerun()
 
