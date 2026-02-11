@@ -4,7 +4,6 @@ from datetime import datetime
 import os
 import time
 import streamlit.components.v1 as components
-from io import BytesIO
 
 # --- 1. CONFIGURACIÓN ---
 ARCHIVO_MARCACIONES = "marcacion.csv"
@@ -13,7 +12,7 @@ LOGO_NOMBRE = "logo_lobo.png"
 
 def inicializar_sistema():
     if not os.path.exists(ARCHIVO_MARCACIONES) or os.stat(ARCHIVO_MARCACIONES).st_size == 0:
-        pd.DataFrame(columns=["DNI", "Nombre", "Fecha", "Hora", "Tipo", "Observacion", "Tardanza_Min"]).to_csv(ARCHIVO_MARCACIONES, index=False)
+        pd.DataFrame(columns=["DNI", "Nombre", "Fecha", "Hora", "Tipo", "Observacion"]).to_csv(ARCHIVO_MARCACIONES, index=False)
     if not os.path.exists(ARCHIVO_EMPLEADOS) or os.stat(ARCHIVO_EMPLEADOS).st_size == 0:
         pd.DataFrame(columns=["DNI", "Nombre", "Salario"]).to_csv(ARCHIVO_EMPLEADOS, index=False)
 
@@ -25,12 +24,11 @@ def obtener_ultimo_registro(dni):
         return reg.iloc[-1] if not reg.empty else None
     except: return None
 
-def registrar(dni, nombre, tipo, obs="", tardanza=0):
+def registrar(dni, nombre, tipo, obs=""):
     ahora = datetime.now()
     nueva_fila = {
         "DNI": dni, "Nombre": nombre, "Fecha": ahora.strftime("%Y-%m-%d"),
-        "Hora": ahora.strftime("%H:%M:%S"), "Tipo": tipo, "Observacion": obs, 
-        "Tardanza_Min": tardanza
+        "Hora": ahora.strftime("%H:%M:%S"), "Tipo": tipo, "Observacion": obs
     }
     df = pd.read_csv(ARCHIVO_MARCACIONES)
     pd.concat([df, pd.DataFrame([nueva_fila])], ignore_index=True).to_csv(ARCHIVO_MARCACIONES, index=False)
@@ -53,14 +51,14 @@ if acceso_admin:
         st.sidebar.error("Clave incorrecta")
 
 if modo == "Marcación":
+    # ENCABEZADO
     col1, col2 = st.columns([1.5, 4])
     with col1:
         if os.path.exists(LOGO_NOMBRE):
             st.image(LOGO_NOMBRE, width=180)
-        else:
-            st.write("🐺")
+        else: st.write("🐺")
     with col2:
-        st.markdown("<h1 style='text-align: center; color: #1E3A8A; font-family: Arial; margin-top: 15px;'>SR. LOBO BPO SOLUTIONS SAC</h1>", unsafe_allow_html=True)
+        st.markdown("<h1 style='text-align: center; color: #1E3A8A; margin-top: 15px;'>SR. LOBO BPO SOLUTIONS SAC</h1>", unsafe_allow_html=True)
         st.markdown("<p style='text-align: center; color: gray; font-weight: bold;'>CONTROL DE ASISTENCIA</p>", unsafe_allow_html=True)
     
     st.divider()
@@ -68,7 +66,18 @@ if modo == "Marcación":
     if "reset_key" not in st.session_state: st.session_state.reset_key = 0
     if "mostrando_obs" not in st.session_state: st.session_state.mostrando_obs = False
     
-    components.html(f"""<script>window.parent.document.querySelectorAll('input[type="text"]')[0].focus();</script>""", height=0)
+    # --- SCRIPT DE FOCO PERSISTENTE ---
+    components.html(f"""
+        <script>
+            function setFocus() {{
+                var inputs = window.parent.document.querySelectorAll('input[type="text"]');
+                if (inputs.length > 0) {{ inputs[0].focus(); }}
+            }}
+            setFocus();
+            setTimeout(setFocus, 500);
+            setTimeout(setFocus, 1000);
+        </script>
+    """, height=0)
 
     dni = st.text_input("DIGITE SU DNI Y PRESIONE ENTER:", key=f"dni_{st.session_state.reset_key}")
 
@@ -78,27 +87,32 @@ if modo == "Marcación":
             nombre = emp.iloc[0]['Nombre']
             ult = obtener_ultimo_registro(dni)
             est = ult['Tipo'] if ult is not None else "SIN MARCAR"
-            
             st.success(f"👤 {nombre} | Estado: {est}")
-            c1, c2 = st.columns(2); c3, c4 = st.columns(2)
+            
+            c1, c2 = st.columns(2)
+            c3, c4 = st.columns(2)
 
             with c1:
                 if st.button("📥 INGRESO", use_container_width=True, type="primary", disabled=(est != "SIN MARCAR")):
                     registrar(dni, nombre, "INGRESO")
                     st.session_state.reset_key += 1; st.rerun()
+
             with c3:
                 if st.button("🚶 SALIDA PERMISO", use_container_width=True, disabled=(est != "INGRESO")):
                     st.session_state.mostrando_obs = True
+
             if st.session_state.mostrando_obs:
                 motivo = st.text_input("MOTIVO DEL PERMISO:", key=f"mot_{st.session_state.reset_key}")
                 if motivo:
                     registrar(dni, nombre, "SALIDA_PERMISO", obs=motivo)
                     st.session_state.mostrando_obs = False
                     st.session_state.reset_key += 1; st.rerun()
+
             with c4:
                 if st.button("🔙 RETORNO PERMISO", use_container_width=True, disabled=(est != "SALIDA_PERMISO")):
                     registrar(dni, nombre, "RETORNO_PERMISO")
                     st.session_state.reset_key += 1; st.rerun()
+
             with c2:
                 if st.button("📤 SALIDA FINAL", use_container_width=True, disabled=(est not in ["INGRESO", "RETORNO_PERMISO"])):
                     registrar(dni, nombre, "SALIDA")
@@ -107,21 +121,16 @@ if modo == "Marcación":
             st.error("DNI no registrado"); time.sleep(1); st.session_state.reset_key += 1; st.rerun()
 
 elif modo == "Reporte Nómina":
-    st.header("💰 Panel Administrativo")
+    st.header("💰 Historial de Marcaciones")
     df_m = pd.read_csv(ARCHIVO_MARCACIONES)
-    
-    # MOSTRAR TABLA
     st.dataframe(df_m, use_container_width=True)
-
-    # --- FUNCIÓN PARA EXPORTAR A EXCEL ---
-    buffer = BytesIO()
-    with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-        df_m.to_excel(writer, index=False, sheet_name='Marcaciones')
     
+    # Exportación simple compatible con Excel (CSV)
+    csv = df_m.to_csv(index=False).encode('utf-8-sig')
     st.download_button(
-        label="📥 Descargar Reporte en Excel",
-        data=buffer.getvalue(),
-        file_name=f"Reporte_Asistencia_{datetime.now().strftime('%Y-%m-%d')}.xlsx",
-        mime="application/vnd.ms-excel",
+        label="📥 Descargar Reporte para Excel",
+        data=csv,
+        file_name=f"Asistencia_{datetime.now().strftime('%Y-%m-%d')}.csv",
+        mime='text/csv',
         use_container_width=True
     )
