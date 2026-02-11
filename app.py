@@ -58,7 +58,6 @@ with st.sidebar:
 # --- 4. LÓGICA DE REGISTRO ---
 def registrar_en_nube(dni, nombre, tipo, obs=""):
     try:
-        # Usamos el método más directo de conexión
         df_act = conn.read(spreadsheet=url_hoja, ttl=0)
         ahora = obtener_hora_peru()
         hora_act = ahora.strftime("%H:%M:%S")
@@ -87,7 +86,7 @@ if modo == "Marcación":
 
     st.write("### DIGITE SU DNI Y PRESIONE ENTER:")
     
-    # Caja chica de DNI (ocupa poco espacio)
+    # Caja chica de DNI (ocupa 1/4 del ancho de la pantalla)
     c_dni, c_vacio = st.columns([1, 3])
     with c_dni:
         dni = st.text_input("", key=f"dni_{st.session_state.reset_key}", label_visibility="collapsed")
@@ -99,7 +98,6 @@ if modo == "Marcación":
             st.markdown(f"<h2 style='color: #2E7D32;'>👤 Bienvenido: {nombre}</h2>", unsafe_allow_html=True)
             
             try:
-                # Lectura directa
                 df_cloud = conn.read(spreadsheet=url_hoja, ttl=0)
                 hoy = obtener_hora_peru().strftime("%Y-%m-%d")
                 marcs = df_cloud[(df_cloud['DNI'].astype(str) == str(dni)) & (df_cloud['Fecha'] == hoy)]
@@ -132,7 +130,7 @@ if modo == "Marcación":
                             registrar_en_nube(dni, nombre, "SALIDA_PERMISO", obs=motivo)
                             st.session_state.mostrando_obs = False
             except:
-                st.error("Error al leer Google Sheets. Verifica que la hoja NO esté vacía.")
+                st.error("Error al leer Google Sheets. Verifica que la Fila 1 tenga los nombres correctos.")
         else:
             st.error("DNI no registrado.")
             time.sleep(1)
@@ -145,4 +143,4 @@ elif modo == "Historial Mensual":
         df_nube = conn.read(spreadsheet=url_hoja, ttl=0)
         st.dataframe(df_nube, use_container_width=True)
     except:
-        st.error("No se pudo cargar.")
+        st.error("No se pudo cargar el historial.")
