@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 import os
 import time
 import streamlit.components.v1 as components
@@ -12,6 +12,13 @@ LOGO_NOMBRE = "logo_lobo.png"
 HORA_ENTRADA_OFICIAL = "08:00:00" 
 MINUTOS_TOLERANCIA = 30
 
+# FUNCIÓN PARA OBTENER HORA DE PERÚ (UTC-5)
+def obtener_hora_peru():
+    # Streamlit Cloud usa UTC, restamos 5 horas para Perú
+    utc_now = datetime.now(timezone.utc)
+    peru_now = utc_now - timedelta(hours=5)
+    return peru_now
+
 def inicializar_sistema():
     if not os.path.exists(ARCHIVO_MARCACIONES) or os.stat(ARCHIVO_MARCACIONES).st_size == 0:
         pd.DataFrame(columns=["DNI", "Nombre", "Fecha", "Hora", "Tipo", "Observacion", "Tardanza_Min"]).to_csv(ARCHIVO_MARCACIONES, index=False)
@@ -21,15 +28,17 @@ def inicializar_sistema():
 def obtener_estado_hoy(dni):
     try:
         df = pd.read_csv(ARCHIVO_MARCACIONES)
-        hoy = datetime.now().strftime('%Y-%m-%d')
+        hoy = obtener_hora_peru().strftime('%Y-%m-%d')
         reg = df[(df['DNI'].astype(str) == str(dni)) & (df['Fecha'] == hoy)]
         if reg.empty: return "SIN MARCAR"
         return reg.iloc[-1]['Tipo']
     except: return "SIN MARCAR"
 
 def registrar(dni, nombre, tipo, obs=""):
-    ahora = datetime.now()
+    ahora = obtener_hora_peru()
+    fecha_hoy = ahora.strftime("%Y-%m-%d")
     hora_actual = ahora.strftime("%H:%M:%S")
+    
     tardanza = 0
     if tipo == "INGRESO":
         t_marcada = datetime.strptime(hora_actual, '%H:%M:%S')
@@ -39,7 +48,7 @@ def registrar(dni, nombre, tipo, obs=""):
             if dif > MINUTOS_TOLERANCIA: tardanza = dif
 
     nueva_fila = {
-        "DNI": dni, "Nombre": nombre, "Fecha": ahora.strftime("%Y-%m-%d"),
+        "DNI": dni, "Nombre": nombre, "Fecha": fecha_hoy,
         "Hora": hora_actual, "Tipo": tipo, "Observacion": obs, "Tardanza_Min": tardanza
     }
     df = pd.read_csv(ARCHIVO_MARCACIONES)
@@ -65,9 +74,11 @@ if modo == "Marcación":
     with col1:
         if os.path.exists(LOGO_NOMBRE): st.image(LOGO_NOMBRE, width=180)
     with col2:
-        st.markdown("<h1 style='text-align: center; color: #1E3A8A;'>SR. LOBO BPO SOLUTIONS SAC</h1>", unsafe_allow_html=True)
+        st.markdown(f"<h1 style='text-align: center; color: #1E3A8A;'>SR. LOBO BPO SOLUTIONS SAC</h1>", unsafe_allow_html=True)
+        st.markdown(f"<p style='text-align: center; color: gray;'>Hora Actual: {obtener_hora_peru().strftime('%H:%M:%S')}</p>", unsafe_allow_html=True)
     st.divider()
 
+    # SCRIPT DE FOCO INTELIGENTE
     components.html("""<script>function setFocus(){ var ins = window.parent.document.querySelectorAll('input[type="text"]'); if(ins.length===1){ins[0].focus();}else if(ins.length>1){ins[1].focus();}} setInterval(setFocus, 500);</script>""", height=0)
 
     if "reset_key" not in st.session_state: st.session_state.reset_key = 0
@@ -110,14 +121,9 @@ elif modo == "Reporte Nómina":
     st.header("💰 Resumen de Tardanzas y Descuentos")
     df_m = pd.read_csv(ARCHIVO_MARCACIONES)
     df_reporte = df_m.merge(df_empleados, on="DNI", how="left")
-    
-    # Cálculo interno del descuento
     df_reporte['Equivalente_Dinero'] = (df_reporte['Salario'] / 30 / 8 / 60) * df_reporte['Tardanza_Min']
     df_reporte['Equivalente_Dinero'] = df_reporte['Equivalente_Dinero'].round(2)
-
-    # Mostrar solo lo necesario (Sin el campo salario)
     columnas_vista = ['Fecha', 'Nombre_x', 'Hora', 'Tipo', 'Tardanza_Min', 'Equivalente_Dinero', 'Observacion']
     st.dataframe(df_reporte[columnas_vista], use_container_width=True)
-    
     csv = df_reporte[columnas_vista].to_csv(index=False).encode('utf-8-sig')
-    st.download_button("📥 Descargar Reporte para Excel", data=csv, file_name="Reporte_Lobo_BPO.csv", use_container_width=True)
+    st.download_button("📥 Descargar Reporte", data=csv, file_name="Reporte_Lobo_BPO.csv", use_container_width=True)
