@@ -8,7 +8,8 @@ import streamlit.components.v1 as components
 # --- 1. CONFIGURACIÓN ---
 ARCHIVO_MARCACIONES = "marcacion.csv"
 ARCHIVO_EMPLEADOS = "empleados.csv"
-LOGO_PATH = "logo_lobo.png" 
+# Asegúrate de que en GitHub el archivo se llame exactamente: logo_lobo.png
+LOGO_NOMBRE = "logo_lobo.png" 
 
 def inicializar_sistema():
     if not os.path.exists(ARCHIVO_MARCACIONES) or os.stat(ARCHIVO_MARCACIONES).st_size == 0:
@@ -39,30 +40,33 @@ st.set_page_config(page_title="Sr. Lobo BPO - Asistencia", layout="centered")
 inicializar_sistema()
 df_empleados = pd.read_csv(ARCHIVO_EMPLEADOS)
 
-# BARRA LATERAL CON ACCESO RESTRINGIDO
+# BARRA LATERAL PRIVADA (A pedido de Ascar)
 st.sidebar.title("🐺 Gestión")
 acceso_admin = st.sidebar.checkbox("Acceso Administrador")
 
 if acceso_admin:
-    password = st.sidebar.text_input("Ingrese Contraseña:", type="password")
-    if password == "Lobo2026": # ESTA ES TU CLAVE, PUEDES CAMBIARLA
-        modo = st.sidebar.radio("Navegación:", ["Marcación", "Reporte Nómina"])
+    password = st.sidebar.text_input("Contraseña:", type="password")
+    if password == "Lobo2026": # Esta es tu clave privada
+        modo = st.sidebar.radio("Módulo:", ["Marcación", "Reporte Nómina"])
     else:
-        st.sidebar.warning("Clave requerida para ver reportes")
+        st.sidebar.warning("Clave requerida")
         modo = "Marcación"
 else:
     modo = "Marcación"
 
 if modo == "Marcación":
-    # DISEÑO: Logo izquierda (si existe), Letras centro
-    col_logo, col_titulo = st.columns([1, 4])
-    with col_logo:
-        if os.path.exists(LOGO_PATH):
-            st.image(LOGO_PATH, width=150)
+    # --- DISEÑO DEL ENCABEZADO (Lobo izquierda, Letras centro) ---
+    col1, col2 = st.columns([1, 4])
+    
+    with col1:
+        # Lógica flexible para encontrar el logo en el servidor
+        if os.path.exists(LOGO_NOMBRE):
+            st.image(LOGO_NOMBRE, width=120)
         else:
-            st.markdown("### 🐺") # Muestra un emoji si la imagen no carga
+            st.markdown("### 🐺") # Muestra un lobo genérico si no encuentra la imagen
+            st.caption("Subir logo_lobo.png a GitHub")
             
-    with col_titulo:
+    with col2:
         st.markdown("<h1 style='text-align: center; color: #1E3A8A; margin-top: 10px; font-family: Arial;'>SR. LOBO BPO SOLUTIONS SAC</h1>", unsafe_allow_html=True)
         st.markdown("<p style='text-align: center; color: gray; font-weight: bold;'>CONTROL DE ASISTENCIA</p>", unsafe_allow_html=True)
     
@@ -71,18 +75,18 @@ if modo == "Marcación":
     if "reset_key" not in st.session_state: st.session_state.reset_key = 0
     if "mostrando_obs" not in st.session_state: st.session_state.mostrando_obs = False
 
-    # --- SCRIPT DE FOCO (RESTABLECIDO) ---
+    # --- SCRIPT DE FOCO AUTOMÁTICO REFORZADO ---
     components.html(
         f"""
         <script>
-            function forzarFoco() {{
+            function setFocus() {{
                 const inputs = window.parent.document.querySelectorAll('input[type="text"]');
                 if (inputs.length > 0) {{
                     inputs[0].focus();
                 }}
             }}
-            setTimeout(forzarFoco, 400);
-            setTimeout(forzarFoco, 1200);
+            setTimeout(setFocus, 500);
+            setTimeout(setFocus, 1500);
         </script>
         """,
         height=0,
@@ -98,10 +102,8 @@ if modo == "Marcación":
             est = ult['Tipo'] if ult is not None else "SIN MARCAR"
             
             if est == "SALIDA":
-                st.warning(f"Jornada finalizada para: {nombre}")
-                time.sleep(2)
-                st.session_state.reset_key += 1
-                st.rerun()
+                st.warning(f"Jornada terminada para: {nombre}")
+                time.sleep(2); st.session_state.reset_key += 1; st.rerun()
             else:
                 st.info(f"👤 {nombre} | Estado: {est}")
                 c1, c2 = st.columns(2); c3, c4 = st.columns(2)
@@ -109,9 +111,7 @@ if modo == "Marcación":
                 with c1:
                     if st.button("📥 INGRESO", use_container_width=True, type="primary", disabled=(est != "SIN MARCAR")):
                         registrar(dni, nombre, "INGRESO")
-                        st.session_state.reset_key += 1
-                        st.rerun()
-                
+                        st.session_state.reset_key += 1; st.rerun()
                 with c3:
                     if st.button("🚶 SALIDA PERMISO", use_container_width=True, disabled=(est != "INGRESO")):
                         st.session_state.mostrando_obs = True
@@ -121,25 +121,18 @@ if modo == "Marcación":
                     if motivo:
                         registrar(dni, nombre, "SALIDA_PERMISO", obs=motivo)
                         st.session_state.mostrando_obs = False
-                        st.session_state.reset_key += 1
-                        st.rerun()
+                        st.session_state.reset_key += 1; st.rerun()
 
                 with c4:
                     if st.button("🔙 RETORNO PERMISO", use_container_width=True, disabled=(est != "SALIDA_PERMISO")):
                         registrar(dni, nombre, "RETORNO_PERMISO")
-                        st.session_state.reset_key += 1
-                        st.rerun()
-                
+                        st.session_state.reset_key += 1; st.rerun()
                 with c2:
                     if st.button("📤 SALIDA FINAL", use_container_width=True, disabled=(est not in ["INGRESO", "RETORNO_PERMISO"])):
                         registrar(dni, nombre, "SALIDA")
-                        st.session_state.reset_key += 1
-                        st.rerun()
+                        st.session_state.reset_key += 1; st.rerun()
         else:
-            st.error("DNI no registrado.")
-            time.sleep(1)
-            st.session_state.reset_key += 1
-            st.rerun()
+            st.error("DNI no registrado."); time.sleep(1); st.session_state.reset_key += 1; st.rerun()
 
 elif modo == "Reporte Nómina":
     st.header("💰 Historial de Marcaciones")
