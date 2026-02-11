@@ -66,16 +66,18 @@ if modo == "Marcación":
     if "reset_key" not in st.session_state: st.session_state.reset_key = 0
     if "mostrando_obs" not in st.session_state: st.session_state.mostrando_obs = False
     
-    # --- SCRIPT DE FOCO PERSISTENTE ---
-    components.html(f"""
+    # --- SCRIPT DE FOCO ULTRA-PERSISTENTE PARA WEB ---
+    # Este script detecta cambios en la página y fuerza el foco continuamente
+    components.html("""
         <script>
-            function setFocus() {{
+            function setFocus() {
                 var inputs = window.parent.document.querySelectorAll('input[type="text"]');
-                if (inputs.length > 0) {{ inputs[0].focus(); }}
-            }}
-            setFocus();
-            setTimeout(setFocus, 500);
-            setTimeout(setFocus, 1000);
+                if (inputs.length > 0) {
+                    inputs[0].focus();
+                }
+            }
+            // Ejecutar ráfaga post-carga
+            setInterval(setFocus, 500); 
         </script>
     """, height=0)
 
@@ -89,13 +91,13 @@ if modo == "Marcación":
             est = ult['Tipo'] if ult is not None else "SIN MARCAR"
             st.success(f"👤 {nombre} | Estado: {est}")
             
-            c1, c2 = st.columns(2)
-            c3, c4 = st.columns(2)
+            c1, c2 = st.columns(2); c3, c4 = st.columns(2)
 
             with c1:
                 if st.button("📥 INGRESO", use_container_width=True, type="primary", disabled=(est != "SIN MARCAR")):
                     registrar(dni, nombre, "INGRESO")
-                    st.session_state.reset_key += 1; st.rerun()
+                    st.session_state.reset_key += 1
+                    st.rerun()
 
             with c3:
                 if st.button("🚶 SALIDA PERMISO", use_container_width=True, disabled=(est != "INGRESO")):
@@ -106,17 +108,20 @@ if modo == "Marcación":
                 if motivo:
                     registrar(dni, nombre, "SALIDA_PERMISO", obs=motivo)
                     st.session_state.mostrando_obs = False
-                    st.session_state.reset_key += 1; st.rerun()
+                    st.session_state.reset_key += 1
+                    st.rerun()
 
             with c4:
                 if st.button("🔙 RETORNO PERMISO", use_container_width=True, disabled=(est != "SALIDA_PERMISO")):
                     registrar(dni, nombre, "RETORNO_PERMISO")
-                    st.session_state.reset_key += 1; st.rerun()
+                    st.session_state.reset_key += 1
+                    st.rerun()
 
             with c2:
                 if st.button("📤 SALIDA FINAL", use_container_width=True, disabled=(est not in ["INGRESO", "RETORNO_PERMISO"])):
                     registrar(dni, nombre, "SALIDA")
-                    st.session_state.reset_key += 1; st.rerun()
+                    st.session_state.reset_key += 1
+                    st.rerun()
         else:
             st.error("DNI no registrado"); time.sleep(1); st.session_state.reset_key += 1; st.rerun()
 
@@ -124,13 +129,5 @@ elif modo == "Reporte Nómina":
     st.header("💰 Historial de Marcaciones")
     df_m = pd.read_csv(ARCHIVO_MARCACIONES)
     st.dataframe(df_m, use_container_width=True)
-    
-    # Exportación simple compatible con Excel (CSV)
     csv = df_m.to_csv(index=False).encode('utf-8-sig')
-    st.download_button(
-        label="📥 Descargar Reporte para Excel",
-        data=csv,
-        file_name=f"Asistencia_{datetime.now().strftime('%Y-%m-%d')}.csv",
-        mime='text/csv',
-        use_container_width=True
-    )
+    st.download_button("📥 Descargar Reporte para Excel", data=csv, file_name="Asistencia.csv", mime='text/csv', use_container_width=True)
