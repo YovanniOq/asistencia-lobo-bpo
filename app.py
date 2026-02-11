@@ -4,6 +4,7 @@ import pandas as pd
 from datetime import datetime, timedelta, timezone
 import os
 import time
+import streamlit.components.v1 as components
 
 # --- 1. CONFIGURACIÓN ---
 HORA_ENTRADA_OFICIAL = "08:00:00"
@@ -13,17 +14,30 @@ LOGO_ARCHIVO = "logo_lobo.png"
 def obtener_hora_peru():
     return datetime.now(timezone.utc) - timedelta(hours=5)
 
-# --- 2. INTERFAZ ---
-st.set_page_config(page_title="Asistencia Sr. Lobo", layout="wide")
+# --- 2. INTERFAZ Y FOCO AUTOMÁTICO ---
+st.set_page_config(page_title="Asistencia Lobo", layout="wide")
 
-# Título sin SAC y Caja de DNI chica
-col_l, col_t = st.columns([1, 4])
-with col_l:
+# SCRIPT DE FOCO: Esto obliga al cursor a estar en el DNI siempre
+components.html("""
+    <script>
+    function setFocus(){
+        var inputs = window.parent.document.querySelectorAll('input[type="text"]');
+        if(inputs.length > 0 && window.parent.document.activeElement.tagName !== 'INPUT') {
+            inputs[0].focus();
+        }
+    }
+    setInterval(setFocus, 500);
+    </script>
+""", height=0)
+
+# Diseño: Logo y Título sin SAC
+col_logo, col_titulo = st.columns([1, 4])
+with col_logo:
     if os.path.exists(LOGO_ARCHIVO):
         st.image(LOGO_ARCHIVO, width=180)
-with col_t:
-    st.markdown("<h1 style='color: #1E3A8A; font-size: 40px;'>SR. LOBO BPO SOLUTIONS</h1>", unsafe_allow_html=True)
-    st.write(f"🕒 Hora actual: **{obtener_hora_peru().strftime('%H:%M:%S')}**")
+with col_titulo:
+    st.markdown("<h1 style='color: #1E3A8A; font-size: 38px; margin-top: 15px;'>SR. LOBO BPO SOLUTIONS</h1>", unsafe_allow_html=True)
+    st.write(f"🕒 Hora: **{obtener_hora_peru().strftime('%H:%M:%S')}**")
 
 st.divider()
 
@@ -32,19 +46,20 @@ try:
     conn = st.connection("gsheets", type=GSheetsConnection)
     url_hoja = st.secrets["connections"]["gsheets"]["spreadsheet"]
 except Exception as e:
-    st.error(f"Error de conexión inicial: {e}")
+    st.error(f"Error de conexión: {e}")
 
 # --- 4. MARCACIÓN ---
 if "reset_key" not in st.session_state: st.session_state.reset_key = 0
 
 st.write("### DIGITE SU DNI Y PRESIONE ENTER:")
-c_dni, c_vacio = st.columns([1, 3])
+
+# CAJA CHICA: Solo ocupa 250px de ancho
+c_dni, c_espacio = st.columns([1, 3])
 with c_dni:
     dni = st.text_input("", key=f"dni_{st.session_state.reset_key}", label_visibility="collapsed")
 
 if dni:
     try:
-        # Carga de empleados local
         df_emp = pd.read_csv("empleados.csv")
         emp = df_emp[df_emp['DNI'].astype(str) == str(dni)]
         
@@ -52,57 +67,44 @@ if dni:
             nombre = emp.iloc[0]['Nombre']
             st.success(f"👤 TRABAJADOR: {nombre}")
             
-            # Intentar leer la nube de forma ultra-flexible
-            try:
-                # Leemos TODO sin validar columnas primero para evitar el error rojo
-                df_cloud = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
-                
-                # BOTONES (Sin filtros para que no falle)
-                c1, c2, c3, c4 = st.columns(4)
-                with c1:
-                    if st.button("📥 INGRESO", use_container_width=True):
-                        registrar_asistencia(dni, nombre, "INGRESO", url_hoja, conn)
-                with c2:
-                    if st.button("🚶 PERMISO", use_container_width=True):
-                        registrar_asistencia(dni, nombre, "SALIDA_PERMISO", url_hoja, conn)
-                with c3:
-                    if st.button("🔙 RETORNO", use_container_width=True):
-                        registrar_asistencia(dni, nombre, "RETORNO_PERMISO", url_hoja, conn)
-                with c4:
-                    if st.button("📤 SALIDA", use_container_width=True):
-                        registrar_asistencia(dni, nombre, "SALIDA", url_hoja, conn)
-            except:
-                st.error("Error al conectar con la pestaña Sheet1. Revisa que el nombre sea exacto.")
+            # Botones de marcación
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                if st.button("📥 INGRESO", use_container_width=True):
+                    guardar(dni, nombre, "INGRESO", url_hoja, conn)
+            with col2:
+                if st.button("🚶 PERMISO", use_container_width=True):
+                    guardar(dni, nombre, "SALIDA_PERMISO", url_hoja, conn)
+            with col3:
+                if st.button("🔙 RETORNO", use_container_width=True):
+                    guardar(dni, nombre, "RETORNO_PERMISO", url_hoja, conn)
+            with col4:
+                if st.button("📤 SALIDA", use_container_width=True):
+                    guardar(dni, nombre, "SALIDA", url_hoja, conn)
         else:
             st.error("DNI no registrado.")
+            time.sleep(1)
+            st.session_state.reset_key += 1
+            st.rerun()
     except Exception as e:
-        st.error(f"Error crítico: {e}")
+        st.error(f"Error: {e}")
 
-def registrar_asistencia(dni, nombre, tipo, url, con_obj):
+def guardar(dni, nombre, tipo, url, con_obj):
     try:
         ahora = obtener_hora_peru()
-        # Creamos la fila nueva
-        nueva_fila = pd.DataFrame([{
-            "DNI": str(dni), 
-            "Nombre": nombre, 
-            "Fecha": ahora.strftime("%Y-%m-%d"), 
-            "Hora": ahora.strftime("%H:%M:%S"), 
-            "Tipo": tipo,
-            "Observacion": "",
-            "Tardanza_Min": 0
+        nueva = pd.DataFrame([{
+            "DNI": str(dni), "Nombre": nombre, "Fecha": ahora.strftime("%Y-%m-%d"),
+            "Hora": ahora.strftime("%H:%M:%S"), "Tipo": tipo, "Observacion": "", "Tardanza_Min": 0
         }])
-        
-        # Leemos lo actual
+        # Leemos y concatenamos
         df_actual = con_obj.read(spreadsheet=url, worksheet="Sheet1", ttl=0)
-        # Unimos
-        df_final = pd.concat([df_actual, nueva_fila], ignore_index=True)
-        # Subimos
+        df_final = pd.concat([df_actual, nueva], ignore_index=True)
         con_obj.update(spreadsheet=url, worksheet="Sheet1", data=df_final)
         
         st.balloons()
-        st.success(f"✅ {tipo} registrado en Google Drive")
+        st.success("✅ Registrado con éxito.")
         time.sleep(2)
         st.session_state.reset_key += 1
         st.rerun()
-    except Exception as e:
-        st.error(f"No se pudo guardar en la nube: {e}")
+    except:
+        st.error("Error al guardar en Drive. Verifica que la pestaña se llame Sheet1.")
