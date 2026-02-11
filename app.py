@@ -14,7 +14,7 @@ LOGO_ARCHIVO = "logo_lobo.png"
 def obtener_hora_peru():
     return datetime.now(timezone.utc) - timedelta(hours=5)
 
-# --- 2. FUNCIÓN DE GUARDADO ---
+# --- 2. FUNCIÓN DE GUARDADO MEJORADA ---
 def guardar_datos(dni, nombre, tipo, url, con_obj):
     try:
         ahora = obtener_hora_peru()
@@ -39,10 +39,10 @@ def guardar_datos(dni, nombre, tipo, url, con_obj):
     except Exception as e:
         st.error(f"Error al guardar en Drive: {e}")
 
-# --- 3. INTERFAZ Y FOCO AUTOMÁTICO ---
+# --- 3. INTERFAZ Y FOCO ---
 st.set_page_config(page_title="Asistencia Lobo", layout="wide")
 
-# SCRIPT DE FOCO: Cursor siempre parpadeando en el DNI
+# Script de Foco Automático
 components.html("""
     <script>
     function setFocus(){
@@ -53,7 +53,18 @@ components.html("""
     </script>
 """, height=0)
 
-# Encabezado sin SAC
+# Menú Lateral (ADMINISTRADOR)
+with st.sidebar:
+    st.title("🐺 Panel de Gestión")
+    modo = "Marcación"
+    if st.checkbox("Acceso Administrador"):
+        clave = st.text_input("Contraseña:", type="password")
+        if clave == "Lobo2026":
+            modo = st.radio("Seleccione Módulo:", ["Marcación", "Historial Mensual"])
+        elif clave != "":
+            st.error("Clave incorrecta")
+
+# Diseño Principal
 col_logo, col_titulo = st.columns([1, 4])
 with col_logo:
     if os.path.exists(LOGO_ARCHIVO):
@@ -64,49 +75,55 @@ with col_titulo:
 
 st.divider()
 
-# --- 4. CONEXIÓN ---
+# --- 4. LÓGICA POR MODO ---
 try:
     conn = st.connection("gsheets", type=GSheetsConnection)
     url_hoja = st.secrets["connections"]["gsheets"]["spreadsheet"]
-except Exception as e:
-    st.error(f"Fallo de conexión: {e}")
+except:
+    st.error("Fallo de conexión con Google Sheets.")
 
-# --- 5. MARCACIÓN ---
-if "reset_key" not in st.session_state: st.session_state.reset_key = 0
+if modo == "Marcación":
+    if "reset_key" not in st.session_state: st.session_state.reset_key = 0
+    
+    st.write("### DIGITE SU DNI Y PRESIONE ENTER:")
+    c_dni, _ = st.columns([1, 3])
+    with c_dni:
+        dni = st.text_input("", key=f"dni_{st.session_state.reset_key}", label_visibility="collapsed")
 
-st.write("### DIGITE SU DNI Y PRESIONE ENTER:")
-
-# CAJA CHICA DE DNI
-c_dni, c_vacio = st.columns([1, 3])
-with c_dni:
-    dni = st.text_input("", key=f"dni_{st.session_state.reset_key}", label_visibility="collapsed")
-
-if dni:
-    try:
-        df_emp = pd.read_csv("empleados.csv")
-        emp = df_emp[df_emp['DNI'].astype(str) == str(dni)]
-        
-        if not emp.empty:
-            nombre = emp.iloc[0]['Nombre']
-            st.success(f"👤 TRABAJADOR: {nombre}")
+    if dni:
+        try:
+            df_emp = pd.read_csv("empleados.csv")
+            emp = df_emp[df_emp['DNI'].astype(str) == str(dni)]
             
-            b1, b2, b3, b4 = st.columns(4)
-            with b1:
-                if st.button("📥 INGRESO", use_container_width=True):
-                    guardar_datos(dni, nombre, "INGRESO", url_hoja, conn)
-            with b2:
-                if st.button("🚶 PERMISO", use_container_width=True):
-                    guardar_datos(dni, nombre, "SALIDA_PERMISO", url_hoja, conn)
-            with b3:
-                if st.button("🔙 RETORNO", use_container_width=True):
-                    guardar_datos(dni, nombre, "RETORNO_PERMISO", url_hoja, conn)
-            with b4:
-                if st.button("📤 SALIDA", use_container_width=True):
-                    guardar_datos(dni, nombre, "SALIDA", url_hoja, conn)
-        else:
-            st.error("DNI no registrado.")
-            time.sleep(1)
-            st.session_state.reset_key += 1
-            st.rerun()
-    except Exception as e:
-        st.error(f"Error de lectura: {e}")
+            if not emp.empty:
+                nombre = emp.iloc[0]['Nombre']
+                st.success(f"👤 TRABAJADOR: {nombre}")
+                
+                b1, b2, b3, b4 = st.columns(4)
+                with b1:
+                    if st.button("📥 INGRESO", use_container_width=True):
+                        guardar_datos(dni, nombre, "INGRESO", url_hoja, conn)
+                with b2:
+                    if st.button("🚶 PERMISO", use_container_width=True):
+                        guardar_datos(dni, nombre, "SALIDA_PERMISO", url_hoja, conn)
+                with b3:
+                    if st.button("🔙 RETORNO", use_container_width=True):
+                        guardar_datos(dni, nombre, "RETORNO_PERMISO", url_hoja, conn)
+                with b4:
+                    if st.button("📤 SALIDA", use_container_width=True):
+                        guardar_datos(dni, nombre, "SALIDA", url_hoja, conn)
+            else:
+                st.error("DNI no registrado.")
+                time.sleep(1)
+                st.session_state.reset_key += 1
+                st.rerun()
+        except Exception as e:
+            st.error(f"Error: {e}")
+
+elif modo == "Historial Mensual":
+    st.header("📋 Historial de Asistencias en la Nube")
+    try:
+        df_nube = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
+        st.dataframe(df_nube, use_container_width=True)
+    except:
+        st.error("No se pudo cargar la base de datos de Drive.")
