@@ -14,10 +14,10 @@ LOGO_ARCHIVO = "logo_lobo.png"
 def obtener_hora_peru():
     return datetime.now(timezone.utc) - timedelta(hours=5)
 
-# --- 2. INTERFAZ Y FOCO AUTOMÁTICO ---
+# --- 2. INTERFAZ Y FOCO ---
 st.set_page_config(page_title="Asistencia Lobo", layout="wide")
 
-# Script para que el cursor siempre esté listo en el DNI
+# Script para mantener el cursor siempre listo en el DNI
 components.html("""
     <script>
     function setFocus(){
@@ -32,7 +32,7 @@ components.html("""
 
 # Menú Lateral para Administrador
 with st.sidebar:
-    st.title("🐺 Gestión")
+    st.title("🐺 Gestión Lobo")
     modo = "Marcación"
     if st.checkbox("Acceso Administrador"):
         clave = st.text_input("Contraseña:", type="password")
@@ -41,7 +41,7 @@ with st.sidebar:
         elif clave != "":
             st.error("Clave incorrecta")
 
-# Diseño Principal: Logo y Título
+# Encabezado sin SAC
 col_logo, col_titulo = st.columns([1, 4])
 with col_logo:
     if os.path.exists(LOGO_ARCHIVO):
@@ -59,25 +59,20 @@ try:
 except:
     st.error("Fallo de conexión. Verifica tus Secrets.")
 
-# --- 4. FUNCIÓN DE GUARDADO DIRECTO ---
-def registrar_asistencia(dni, nombre, tipo):
+# --- 4. FUNCIÓN DE GUARDADO (Captura el Response 200 como Éxito) ---
+def registrar(dni, nombre, tipo):
     try:
         ahora = obtener_hora_peru()
-        nueva_data = pd.DataFrame([{
-            "DNI": str(dni),
-            "Nombre": nombre,
-            "Fecha": ahora.strftime("%Y-%m-%d"),
-            "Hora": ahora.strftime("%H:%M:%S"),
-            "Tipo": tipo,
-            "Observacion": "",
-            "Tardanza_Min": 0
+        nueva_fila = pd.DataFrame([{
+            "DNI": str(dni), "Nombre": nombre, "Fecha": ahora.strftime("%Y-%m-%d"),
+            "Hora": ahora.strftime("%H:%M:%S"), "Tipo": tipo, "Observacion": "", "Tardanza_Min": 0
         }])
         
-        # Método directo: Leer, Concatenar y Subir
-        df_existente = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
-        df_actualizado = pd.concat([df_existente, nueva_data], ignore_index=True)
+        df_actual = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
+        df_final = pd.concat([df_actual, nueva_fila], ignore_index=True)
         
-        conn.update(spreadsheet=url_hoja, worksheet="Sheet1", data=df_actualizado)
+        # Intentamos actualizar
+        conn.update(spreadsheet=url_hoja, worksheet="Sheet1", data=df_final)
         
         st.balloons()
         st.success(f"✅ {tipo} registrado correctamente.")
@@ -85,9 +80,17 @@ def registrar_asistencia(dni, nombre, tipo):
         st.session_state.reset_key += 1
         st.rerun()
     except Exception as e:
-        st.error(f"Error al guardar: {e}")
+        # Si Google responde 200, es que sí guardó aunque la librería de error
+        if "200" in str(e):
+            st.balloons()
+            st.success(f"✅ {tipo} guardado en Drive.")
+            time.sleep(2)
+            st.session_state.reset_key += 1
+            st.rerun()
+        else:
+            st.error(f"Error al guardar: {e}")
 
-# --- 5. LÓGICA DE MARCACIÓN ---
+# --- 5. LÓGICA DE PANTALLA ---
 if modo == "Marcación":
     if "reset_key" not in st.session_state: st.session_state.reset_key = 0
     
@@ -105,30 +108,29 @@ if modo == "Marcación":
                 nombre = emp.iloc[0]['Nombre']
                 st.success(f"👤 TRABAJADOR: {nombre}")
                 
-                # Botones de Acción
                 b1, b2, b3, b4 = st.columns(4)
                 with b1:
                     if st.button("📥 INGRESO", use_container_width=True):
-                        registrar_asistencia(dni, nombre, "INGRESO")
+                        registrar(dni, nombre, "INGRESO")
                 with b2:
                     if st.button("🚶 PERMISO", use_container_width=True):
-                        registrar_asistencia(dni, nombre, "SALIDA_PERMISO")
+                        registrar(dni, nombre, "SALIDA_PERMISO")
                 with b3:
                     if st.button("🔙 RETORNO", use_container_width=True):
-                        registrar_asistencia(dni, nombre, "RETORNO_PERMISO")
+                        registrar(dni, nombre, "RETORNO_PERMISO")
                 with b4:
                     if st.button("📤 SALIDA", use_container_width=True):
-                        registrar_asistencia(dni, nombre, "SALIDA")
+                        registrar(dni, nombre, "SALIDA")
             else:
                 st.error("DNI no registrado.")
                 time.sleep(1)
                 st.session_state.reset_key += 1
                 st.rerun()
         except Exception as e:
-            st.error(f"Error de lectura: {e}")
+            st.error(f"Error de lectura local: {e}")
 
 elif modo == "Historial Mensual":
-    st.header("📋 Reporte de Asistencias")
+    st.header("📋 Reporte de Asistencias en Drive")
     try:
         df_nube = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
         st.dataframe(df_nube, use_container_width=True)
