@@ -23,25 +23,20 @@ def obtener_estado_hoy(dni):
         df = pd.read_csv(ARCHIVO_MARCACIONES)
         hoy = datetime.now().strftime('%Y-%m-%d')
         reg = df[(df['DNI'].astype(str) == str(dni)) & (df['Fecha'] == hoy)]
-        if reg.empty:
-            return "SIN MARCAR"
+        if reg.empty: return "SIN MARCAR"
         return reg.iloc[-1]['Tipo']
-    except:
-        return "SIN MARCAR"
+    except: return "SIN MARCAR"
 
 def registrar(dni, nombre, tipo, obs=""):
     ahora = datetime.now()
     hora_actual = ahora.strftime("%H:%M:%S")
-    
-    # Lógica de Tardanza
     tardanza = 0
     if tipo == "INGRESO":
         t_marcada = datetime.strptime(hora_actual, '%H:%M:%S')
         t_oficial = datetime.strptime(HORA_ENTRADA_OFICIAL, '%H:%M:%S')
         if t_marcada > t_oficial:
             dif = int((t_marcada - t_oficial).total_seconds() / 60)
-            if dif > MINUTOS_TOLERANCIA:
-                tardanza = dif
+            if dif > MINUTOS_TOLERANCIA: tardanza = dif
 
     nueva_fila = {
         "DNI": dni, "Nombre": nombre, "Fecha": ahora.strftime("%Y-%m-%d"),
@@ -85,29 +80,23 @@ if modo == "Marcación":
         if not emp.empty:
             nombre = emp.iloc[0]['Nombre']
             est = obtener_estado_hoy(dni)
-            
             if est == "SALIDA":
-                st.warning(f"🚫 {nombre}, ya registraste tu salida final por hoy.")
-                time.sleep(2)
-                st.session_state.reset_key += 1
-                st.rerun()
+                st.warning(f"🚫 {nombre}, jornada finalizada.")
+                time.sleep(2); st.session_state.reset_key += 1; st.rerun()
             else:
                 st.success(f"👤 {nombre} | Estado: {est}")
                 c1, c2 = st.columns(2); c3, c4 = st.columns(2)
-                
                 with c1:
                     if st.button("📥 INGRESO", use_container_width=True, type="primary", disabled=(est != "SIN MARCAR")):
                         registrar(dni, nombre, "INGRESO"); st.session_state.reset_key += 1; st.rerun()
                 with c3:
                     if st.button("🚶 SALIDA PERMISO", use_container_width=True, disabled=(est != "INGRESO" and est != "RETORNO_PERMISO")):
                         st.session_state.mostrando_obs = True; st.rerun()
-                
                 if st.session_state.mostrando_obs:
                     motivo = st.text_input("MOTIVO DEL PERMISO:", key=f"mot_{st.session_state.reset_key}")
                     if motivo:
                         registrar(dni, nombre, "SALIDA_PERMISO", obs=motivo)
                         st.session_state.mostrando_obs = False; st.session_state.reset_key += 1; st.rerun()
-                
                 with c4:
                     if st.button("🔙 RETORNO PERMISO", use_container_width=True, disabled=(est != "SALIDA_PERMISO")):
                         registrar(dni, nombre, "RETORNO_PERMISO"); st.session_state.reset_key += 1; st.rerun()
@@ -118,12 +107,17 @@ if modo == "Marcación":
             st.error("DNI no registrado"); time.sleep(1); st.session_state.reset_key += 1; st.rerun()
 
 elif modo == "Reporte Nómina":
-    st.header("💰 Reporte Mensual Acumulado")
+    st.header("💰 Resumen de Tardanzas y Descuentos")
     df_m = pd.read_csv(ARCHIVO_MARCACIONES)
     df_reporte = df_m.merge(df_empleados, on="DNI", how="left")
-    df_reporte['Descuento_Soles'] = (df_reporte['Salario'] / 30 / 8 / 60) * df_reporte['Tardanza_Min']
-    df_reporte['Descuento_Soles'] = df_reporte['Descuento_Soles'].round(2)
+    
+    # Cálculo interno del descuento
+    df_reporte['Equivalente_Dinero'] = (df_reporte['Salario'] / 30 / 8 / 60) * df_reporte['Tardanza_Min']
+    df_reporte['Equivalente_Dinero'] = df_reporte['Equivalente_Dinero'].round(2)
 
-    st.dataframe(df_reporte, use_container_width=True)
-    csv = df_reporte.to_csv(index=False).encode('utf-8-sig')
-    st.download_button("📥 Exportar Reporte Mensual (Excel/CSV)", data=csv, file_name="Reporte_Mensual_Lobo.csv", use_container_width=True)
+    # Mostrar solo lo necesario (Sin el campo salario)
+    columnas_vista = ['Fecha', 'Nombre_x', 'Hora', 'Tipo', 'Tardanza_Min', 'Equivalente_Dinero', 'Observacion']
+    st.dataframe(df_reporte[columnas_vista], use_container_width=True)
+    
+    csv = df_reporte[columnas_vista].to_csv(index=False).encode('utf-8-sig')
+    st.download_button("📥 Descargar Reporte para Excel", data=csv, file_name="Reporte_Lobo_BPO.csv", use_container_width=True)
