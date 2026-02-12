@@ -113,42 +113,44 @@ if modo == "Marcación":
                     if st.session_state.mostrar_obs:
                         st.divider()
                         motivo = st.text_input("MOTIVO DEL PERMISO:")
-                        if motivo: registrar_en_nube(dni_in, nombre, "SALIDA_PER_INGRESO", obs=motivo)
+                        if motivo: registrar_en_nube(dni_in, nombre, "SALIDA_PERMISO", obs=motivo)
             else: st.error("DNI no registrado.")
         except: st.error("Error base local.")
 
-else: # --- REPORTE SEGURO ---
+else: # --- REPORTE CON NOMBRES DE MESES ---
     st.header("📋 Reporte Mensual Lobo")
     try:
         df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
         if not df_h.empty:
-            # PROTECCIÓN: Crea las columnas si no existen en registros viejos
-            if 'Descuento_Soles' not in df_h.columns:
-                df_h['Descuento_Soles'] = 0.0
-            if 'Tardanza_Min' not in df_h.columns:
-                df_h['Tardanza_Min'] = 0
+            if 'Descuento_Soles' not in df_h.columns: df_h['Descuento_Soles'] = 0.0
+            if 'Tardanza_Min' not in df_h.columns: df_h['Tardanza_Min'] = 0
             
             df_h['Fecha_dt'] = pd.to_datetime(df_h['Fecha'], errors='coerce')
             df_h = df_h.dropna(subset=['Fecha_dt'])
+            
+            # Diccionario de meses
+            meses_dict = {1:"Enero", 2:"Febrero", 3:"Marzo", 4:"Abril", 5:"Mayo", 6:"Junio", 
+                          7:"Julio", 8:"Agosto", 9:"Septiembre", 10:"Octubre", 11:"Noviembre", 12:"Diciembre"}
             
             f1, f2, _ = st.columns([1, 1, 2])
             with f1:
                 anios = sorted(df_h['Fecha_dt'].dt.year.unique(), reverse=True)
                 sel_anio = st.selectbox("Año", anios if anios else [2026])
             with f2:
-                meses_disp = sorted(df_h[df_h['Fecha_dt'].dt.year == sel_anio]['Fecha_dt'].dt.month.unique())
-                sel_mes = st.selectbox("Mes", meses_disp if meses_disp else [2])
+                meses_num = sorted(df_h[df_h['Fecha_dt'].dt.year == sel_anio]['Fecha_dt'].dt.month.unique())
+                # Aquí mostramos el nombre pero trabajamos con el número
+                sel_mes_num = st.selectbox("Mes", meses_num, format_func=lambda x: meses_dict[x])
             
-            df_filtrado = df_h[(df_h['Fecha_dt'].dt.year == sel_anio) & (df_h['Fecha_dt'].dt.month == sel_mes)]
+            df_filtrado = df_h[(df_h['Fecha_dt'].dt.year == sel_anio) & (df_h['Fecha_dt'].dt.month == sel_mes_num)]
             df_mostrar = df_filtrado.drop(columns=['Fecha_dt'])
             
             st.dataframe(df_mostrar, use_container_width=True)
             
             total_money = pd.to_numeric(df_mostrar['Descuento_Soles'], errors='coerce').sum()
-            st.metric("Total Descuentos (Mes Seleccionado)", f"S/ {total_money:.2f}")
+            st.metric(f"Total Descuentos ({meses_dict[sel_mes_num]})", f"S/ {total_money:.2f}")
             
             csv = df_mostrar.to_csv(index=False).encode('utf-8')
-            st.download_button("📥 Descargar CSV", csv, "Reporte_Lobo.csv", "text/csv")
+            st.download_button("📥 Descargar CSV", csv, f"Reporte_{meses_dict[sel_mes_num]}_{sel_anio}.csv", "text/csv")
         else:
             st.info("No hay registros en el historial.")
     except Exception as e:
