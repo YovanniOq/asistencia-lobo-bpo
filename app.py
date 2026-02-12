@@ -113,22 +113,21 @@ if modo == "Marcación":
                     if st.session_state.mostrar_obs:
                         st.divider()
                         motivo = st.text_input("MOTIVO DEL PERMISO:")
-                        if motivo: registrar_en_nube(dni_in, nombre, "SALIDA_PERMISO", obs=motivo)
+                        if motivo: registrar_en_nube(dni_in, nombre, "SALIDA_PER_INGRESO", obs=motivo)
             else: st.error("DNI no registrado.")
         except: st.error("Error base local.")
 
-else: # --- REPORTE BLINDADO CONTRA COLUMNAS FALTANTES ---
+else: # --- REPORTE SEGURO ---
     st.header("📋 Reporte Mensual Lobo")
     try:
         df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
         if not df_h.empty:
-            # ASEGURAR QUE EXISTAN LAS COLUMNAS NUEVAS PARA EVITAR EL ERROR ROJO
+            # PROTECCIÓN: Crea las columnas si no existen en registros viejos
             if 'Descuento_Soles' not in df_h.columns:
                 df_h['Descuento_Soles'] = 0.0
             if 'Tardanza_Min' not in df_h.columns:
                 df_h['Tardanza_Min'] = 0
             
-            # Limpiar datos para el filtro
             df_h['Fecha_dt'] = pd.to_datetime(df_h['Fecha'], errors='coerce')
             df_h = df_h.dropna(subset=['Fecha_dt'])
             
@@ -145,11 +144,12 @@ else: # --- REPORTE BLINDADO CONTRA COLUMNAS FALTANTES ---
             
             st.dataframe(df_mostrar, use_container_width=True)
             
-            # Cálculo seguro del total
             total_money = pd.to_numeric(df_mostrar['Descuento_Soles'], errors='coerce').sum()
             st.metric("Total Descuentos (Mes Seleccionado)", f"S/ {total_money:.2f}")
             
             csv = df_mostrar.to_csv(index=False).encode('utf-8')
-            st.download_button("📥 Descargar CSV", csv, "Reporte_Asistencia.csv", "text/csv")
+            st.download_button("📥 Descargar CSV", csv, "Reporte_Lobo.csv", "text/csv")
         else:
-            st.info("No hay registros en el
+            st.info("No hay registros en el historial.")
+    except Exception as e:
+        st.warning(f"Sincronizando... {e}")
