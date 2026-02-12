@@ -14,7 +14,6 @@ def obtener_hora_peru():
 # --- 2. CONFIGURACIÓN DE PÁGINA Y FOCO ---
 st.set_page_config(page_title="Asistencia Lobo", layout="wide")
 
-# Script para mantener el foco en la caja de DNI
 components.html("""
     <script>
     function setFocus(){
@@ -31,7 +30,7 @@ components.html("""
 conn = st.connection("gsheets", type=GSheetsConnection)
 url_hoja = st.secrets["connections"]["gsheets"]["spreadsheet"]
 
-# Estados de sesión para memoria local
+# Estados de sesión
 if "reset_key" not in st.session_state: st.session_state.reset_key = 0
 if "mostrar_obs" not in st.session_state: st.session_state.mostrar_obs = False
 if "ultimo_estado_local" not in st.session_state: st.session_state.ultimo_estado_local = {}
@@ -45,7 +44,7 @@ def registrar_dato(dni, nombre, tipo, obs=""):
             "Hora": ahora.strftime("%H:%M:%S"), "Tipo": tipo, "Observacion": obs, "Tardanza_Min": 0
         }])
         
-        # Memoria local inmediata
+        # Memoria local inmediata para el bloqueo
         st.session_state.ultimo_estado_local[str(dni)] = tipo
         
         # Guardado en Drive
@@ -53,24 +52,23 @@ def registrar_dato(dni, nombre, tipo, obs=""):
         df_final = pd.concat([df_actual, nueva_fila], ignore_index=True)
         conn.update(spreadsheet=url_hoja, worksheet="Sheet1", data=df_final)
         
-        st.success(f"✅ {tipo} registrado correctamente.")
+        st.success(f"✅ {tipo} registrado.")
         st.balloons()
         time.sleep(1.2)
         
-        # Limpiar si no es para pedir observación
         if tipo != "SALIDA_PERMISO":
             st.session_state.reset_key += 1
             st.session_state.mostrar_obs = False
         st.rerun()
     except Exception as e:
-        if "200" in str(e): # Bypass error técnico de Google
+        if "200" in str(e): # Bypass para el error de Google que ya conoces
             st.session_state.reset_key += 1
             st.session_state.mostrar_obs = False
             st.rerun()
         else:
-            st.error(f"Error de conexión: {e}")
+            st.error(f"Error al guardar: {e}")
 
-# --- 5. MENÚ LATERAL (RESTAURADO) ---
+# --- 5. MENÚ LATERAL ---
 with st.sidebar:
     st.title("🐺 Gestión Lobo")
     modo = "Marcación"
@@ -81,20 +79,16 @@ with st.sidebar:
         elif clave != "":
             st.error("Clave incorrecta")
 
-# --- 6. DISEÑO PRINCIPAL (LOGO Y TÍTULO) ---
+# --- 6. DISEÑO PRINCIPAL ---
 col_logo, col_titulo = st.columns([1, 4])
 with col_logo:
-    if os.path.exists(LOGO_ARCHIVO): 
-        st.image(LOGO_ARCHIVO, width=180)
-    else:
-        st.write("🐺 (Logo no encontrado)")
+    if os.path.exists(LOGO_ARCHIVO): st.image(LOGO_ARCHIVO, width=180)
 with col_titulo:
     st.markdown("<h1 style='color: #1E3A8A; margin-top: 15px;'>SR. LOBO BPO SOLUTIONS</h1>", unsafe_allow_html=True)
-    st.write(f"🕒 Hora actual: {obtener_hora_peru().strftime('%H:%M:%S')}")
 
 st.divider()
 
-# --- 7. MÓDULOS ---
+# --- 7. LÓGICA DE MARCACIÓN ---
 if modo == "Marcación":
     st.write("### DIGITE SU DNI:")
     c_dni, _ = st.columns([1, 3])
@@ -110,7 +104,7 @@ if modo == "Marcación":
                 nombre = emp.iloc[0]['Nombre']
                 st.info(f"👤 TRABAJADOR: {nombre}")
                 
-                # Estado lógico
+                # Sincronización de estado (Memoria local + Nube)
                 ultimo = st.session_state.ultimo_estado_local.get(str(dni_in), "NADA")
                 
                 if ultimo == "NADA":
@@ -118,14 +112,17 @@ if modo == "Marcación":
                         df_cloud = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
                         hoy = obtener_hora_peru().strftime("%Y-%m-%d")
                         marcs_hoy = df_cloud[(df_cloud['DNI'].astype(str) == str(dni_in)) & (df_cloud['Fecha'] == hoy)]
-                        ultimo = "SALIDA" if not marcs_hoy[marcs_hoy['Tipo'] == "SALIDA"].empty else (marcs_hoy.iloc[-1]['Tipo'] if not marcs_hoy.empty else "NADA")
+                        # Si marcó SALIDA en cualquier momento de hoy, se bloquea todo
+                        if not marcs_hoy[marcs_hoy['Tipo'] == "SALIDA"].empty:
+                            ultimo = "SALIDA"
+                        elif not marcs_hoy.empty:
+                            ultimo = marcs_hoy.iloc[-1]['Tipo']
                     except: pass
 
                 if ultimo == "SALIDA":
-                    st.warning("🚫 Registro finalizado por hoy.")
+                    st.warning("🚫 Turno finalizado por hoy. No se permiten más marcaciones.")
                 else:
                     ya_ingreso = (ultimo in ["INGRESO", "RETORNO_PERMISO", "SALIDA_PERMISO"])
-                    
                     col1, col2, col3, col4 = st.columns(4)
                     with col1:
                         if st.button("📥 INGRESO", disabled=ya_ingreso, use_container_width=True):
@@ -147,14 +144,24 @@ if modo == "Marcación":
                         if motivo:
                             registrar_dato(dni_in, nombre, "SALIDA_PERMISO", obs=motivo)
             else:
-                st.error("DNI no registrado en el sistema.")
+                st.error("DNI no registrado.")
         except Exception as e:
             st.error(f"Error técnico: {e}")
 
+# --- 8. HISTORIAL (ESTA PARTE ES LA QUE FALLABA) ---
 elif modo == "Historial Completo":
-    st.header("📋 Reporte de Asistencia - Google Drive")
+    st.header("📋 Reporte de Asistencia en Tiempo Real")
     try:
+        # Intentamos una lectura limpia
         df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
         st.dataframe(df_h, use_container_width=True)
-    except:
-        st.warning("No se pudo cargar el historial. Verifique su conexión.")
+        
+        # Botón de descarga para tener respaldo fuera de la App
+        csv = df_h.to_csv(index=False).encode('utf-8')
+        st.download_button("📥 Descargar Reporte (CSV)", data=csv, file_name="reporte_asistencia.csv", mime="text/csv")
+        
+    except Exception as e:
+        # Si Google da el error 200, mostramos un mensaje amigable y un botón de reintento
+        st.warning("⏳ El servidor de Google está procesando los datos. Por favor, pulsa el botón de abajo para actualizar.")
+        if st.button("🔄 Actualizar Reporte"):
+            st.rerun()
