@@ -16,8 +16,24 @@ HORA_ENTRADA_OFICIAL = "08:00:00"
 def obtener_hora_peru():
     return datetime.now(timezone.utc) - timedelta(hours=5)
 
-# Foco automático
-components.html("<script>setInterval(function(){var inputs = window.parent.document.querySelectorAll('input'); if(inputs.length > 0 && window.parent.document.activeElement.tagName !== 'INPUT') inputs[0].focus();}, 500);</script>", height=0)
+# --- JAVASCRIPT DE FOCO MEJORADO ---
+# Este script es más robusto: fuerza el foco cada 500ms si el usuario no está escribiendo en otro lado
+components.html("""
+    <script>
+    const forceFocus = () => {
+        const inputs = window.parent.document.querySelectorAll('input[type="text"]');
+        if (inputs.length > 0) {
+            const dniInput = inputs[0];
+            if (window.parent.document.activeElement !== dniInput) {
+                dniInput.focus();
+            }
+        }
+    };
+    // Ejecutar inmediatamente y luego periódicamente
+    setTimeout(forceFocus, 500);
+    setInterval(forceFocus, 1000);
+    </script>
+""", height=0)
 
 # --- 2. CONEXIÓN ---
 conn = st.connection("gsheets", type=GSheetsConnection)
@@ -81,77 +97,3 @@ if modo == "Marcación":
     st.write("### DIGITE SU DNI:")
     c_in, _ = st.columns([1, 4])
     with c_in:
-        dni_in = st.text_input("", key=f"dni_{st.session_state.reset_key}", label_visibility="collapsed")
-    
-    if dni_in:
-        try:
-            df_emp = pd.read_csv("empleados.csv", dtype={'DNI': str})
-            emp = df_emp[df_emp['DNI'] == str(dni_in)]
-            if not emp.empty:
-                nombre = emp.iloc[0]['Nombre']
-                st.info(f"👤 TRABAJADOR: {nombre}")
-                estado = st.session_state.ultimo_estado.get(str(dni_in), "NADA")
-                
-                if estado == "SALIDA":
-                    st.warning("🚫 Turno finalizado hoy.")
-                else:
-                    c1, c2, c3, c4 = st.columns(4)
-                    with c1:
-                        if st.button("📥 INGRESO", disabled=(estado != "NADA"), use_container_width=True):
-                            registrar_en_nube(dni_in, nombre, "INGRESO")
-                    with c2:
-                        if st.button("🚶 PERMISO", disabled=(estado != "INGRESO" and estado != "RETORNO_PERMISO"), use_container_width=True):
-                            st.session_state.mostrar_obs = True
-                            st.rerun()
-                    with c3:
-                        if st.button("🔙 RETORNO", disabled=(estado != "SALIDA_PERMISO"), use_container_width=True):
-                            registrar_en_nube(dni_in, nombre, "RETORNO_PERMISO")
-                    with c4:
-                        if st.button("📤 SALIDA", disabled=(estado == "NADA"), use_container_width=True):
-                            registrar_en_nube(dni_in, nombre, "SALIDA")
-
-                    if st.session_state.mostrar_obs:
-                        st.divider()
-                        motivo = st.text_input("MOTIVO DEL PERMISO:")
-                        if motivo: registrar_en_nube(dni_in, nombre, "SALIDA_PERMISO", obs=motivo)
-            else: st.error("DNI no registrado.")
-        except: st.error("Error base local.")
-
-else: # --- REPORTE CON NOMBRES DE MESES ---
-    st.header("📋 Reporte Mensual Lobo")
-    try:
-        df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
-        if not df_h.empty:
-            if 'Descuento_Soles' not in df_h.columns: df_h['Descuento_Soles'] = 0.0
-            if 'Tardanza_Min' not in df_h.columns: df_h['Tardanza_Min'] = 0
-            
-            df_h['Fecha_dt'] = pd.to_datetime(df_h['Fecha'], errors='coerce')
-            df_h = df_h.dropna(subset=['Fecha_dt'])
-            
-            # Diccionario de meses
-            meses_dict = {1:"Enero", 2:"Febrero", 3:"Marzo", 4:"Abril", 5:"Mayo", 6:"Junio", 
-                          7:"Julio", 8:"Agosto", 9:"Septiembre", 10:"Octubre", 11:"Noviembre", 12:"Diciembre"}
-            
-            f1, f2, _ = st.columns([1, 1, 2])
-            with f1:
-                anios = sorted(df_h['Fecha_dt'].dt.year.unique(), reverse=True)
-                sel_anio = st.selectbox("Año", anios if anios else [2026])
-            with f2:
-                meses_num = sorted(df_h[df_h['Fecha_dt'].dt.year == sel_anio]['Fecha_dt'].dt.month.unique())
-                # Aquí mostramos el nombre pero trabajamos con el número
-                sel_mes_num = st.selectbox("Mes", meses_num, format_func=lambda x: meses_dict[x])
-            
-            df_filtrado = df_h[(df_h['Fecha_dt'].dt.year == sel_anio) & (df_h['Fecha_dt'].dt.month == sel_mes_num)]
-            df_mostrar = df_filtrado.drop(columns=['Fecha_dt'])
-            
-            st.dataframe(df_mostrar, use_container_width=True)
-            
-            total_money = pd.to_numeric(df_mostrar['Descuento_Soles'], errors='coerce').sum()
-            st.metric(f"Total Descuentos ({meses_dict[sel_mes_num]})", f"S/ {total_money:.2f}")
-            
-            csv = df_mostrar.to_csv(index=False).encode('utf-8')
-            st.download_button("📥 Descargar CSV", csv, f"Reporte_{meses_dict[sel_mes_num]}_{sel_anio}.csv", "text/csv")
-        else:
-            st.info("No hay registros en el historial.")
-    except Exception as e:
-        st.warning(f"Sincronizando... {e}")
