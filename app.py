@@ -31,13 +31,13 @@ components.html("""
 conn = st.connection("gsheets", type=GSheetsConnection)
 url_hoja = st.secrets["connections"]["gsheets"]["spreadsheet"]
 
-# Inicializar estados si no existen
+# Inicializar estados para que el sistema no "olvide" el ingreso
 if "reset_key" not in st.session_state: st.session_state.reset_key = 0
 if "mostrar_obs" not in st.session_state: st.session_state.mostrar_obs = False
 if "ultimo_dni" not in st.session_state: st.session_state.ultimo_dni = ""
 if "estado_local" not in st.session_state: st.session_state.estado_local = "NADA"
 
-# --- 4. FUNCIÓN DE GUARDADO (CON BYPASS 200) ---
+# --- 4. FUNCIÓN DE GUARDADO (SIN ERRORES DE SINTAXIS) ---
 def registrar_dato(dni, nombre, tipo, obs=""):
     try:
         ahora = obtener_hora_peru()
@@ -48,13 +48,14 @@ def registrar_dato(dni, nombre, tipo, obs=""):
         
         df_actual = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
         df_final = pd.concat([df_actual, nueva_fila], ignore_index=True)
-        conn.update(spreadsheet=url_ho_worksheet="Sheet1", data=df_final)
+        # LÍNEA 51 CORREGIDA:
+        conn.update(spreadsheet=url_hoja, worksheet="Sheet1", data=df_final)
         
-        st.success(f"✅ REGISTRO EXITOSO: {tipo}")
+        st.success(f"✅ {tipo} registrado con éxito.")
         st.balloons()
         time.sleep(1)
         
-        # ACTUALIZAR ESTADO LOCAL PARA NO DEPENDER DE LA NUBE EN EL PRÓXIMO PASO
+        # Guardamos el estado en la memoria del navegador para habilitar botones rápido
         st.session_state.estado_local = tipo
         st.session_state.ultimo_dni = dni
         st.session_state.reset_key += 1
@@ -69,17 +70,16 @@ def registrar_dato(dni, nombre, tipo, obs=""):
             st.session_state.mostrar_obs = False
             st.rerun()
         else:
-            st.error(f"Error: {e}")
+            st.error(f"Error al guardar: {e}")
 
 # --- 5. MENÚ LATERAL (RECUPERADO) ---
 with st.sidebar:
     st.title("🐺 Panel Administrativo")
     modo = "Marcación"
-    acceso = st.checkbox("Acceso Administrador")
-    if acceso:
+    if st.checkbox("Acceso Administrador"):
         clave = st.text_input("Contraseña:", type="password")
         if clave == "Lobo2026":
-            modo = st.radio("Seleccione Módulo:", ["Marcación", "Historial Completo"])
+            modo = st.radio("Módulo:", ["Marcación", "Historial Completo"])
         elif clave != "":
             st.error("Clave incorrecta")
 
@@ -108,7 +108,7 @@ if modo == "Marcación":
                 nombre = emp.iloc[0]['Nombre']
                 st.info(f"👤 TRABAJADOR: {nombre}")
                 
-                # REVISAR ESTADO (Combinamos Nube + Memoria Local)
+                # REVISAR ESTADO (Nube + Memoria de Sesión)
                 try:
                     df_cloud = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
                     hoy = obtener_hora_peru().strftime("%Y-%m-%d")
@@ -132,17 +132,17 @@ if modo == "Marcación":
                 else:
                     col1, col2, col3, col4 = st.columns(4)
                     with col1:
-                        st.button("📥 INGRESO", disabled=ya_ingreso, use_container_width=True, 
-                                  on_click=registrar_dato, args=(dni_input, nombre, "INGRESO"))
+                        if st.button("📥 INGRESO", disabled=ya_ingreso, use_container_width=True):
+                            registrar_dato(dni_input, nombre, "INGRESO")
                     with col2:
                         if st.button("🚶 PERMISO", disabled=(not ya_ingreso or ultimo_estado == "SALIDA_PERMISO"), use_container_width=True):
                             st.session_state.mostrar_obs = True
                     with col3:
-                        st.button("🔙 RETORNO", disabled=(ultimo_estado != "SALIDA_PERMISO"), use_container_width=True,
-                                  on_click=registrar_dato, args=(dni_input, nombre, "RETORNO_PERMISO"))
+                        if st.button("🔙 RETORNO", disabled=(ultimo_estado != "SALIDA_PERMISO"), use_container_width=True):
+                            registrar_dato(dni_input, nombre, "RETORNO_PERMISO")
                     with col4:
-                        st.button("📤 SALIDA", disabled=not ya_ingreso, use_container_width=True,
-                                  on_click=registrar_dato, args=(dni_input, nombre, "SALIDA"))
+                        if st.button("📤 SALIDA", disabled=not ya_ingreso, use_container_width=True):
+                            registrar_dato(dni_input, nombre, "SALIDA")
 
                     if st.session_state.mostrar_obs:
                         st.divider()
@@ -152,7 +152,7 @@ if modo == "Marcación":
             else:
                 st.error("DNI no registrado.")
         except Exception as e:
-            st.error(f"Error: {e}")
+            st.error(f"Error técnico: {e}")
 
 elif modo == "Historial Completo":
     st.header("📋 Historial de Asistencia")
