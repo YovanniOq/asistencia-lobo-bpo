@@ -13,15 +13,12 @@ def obtener_hora_peru():
     return datetime.now(timezone.utc) - timedelta(hours=5)
 
 # --- JAVASCRIPT PARA FOCO AUTOMÁTICO ---
-# Este script busca el primer input de texto y pone el cursor ahí cada 500ms
 components.html("""
     <script>
     function setFocus(){
         var inputs = window.parent.document.querySelectorAll('input[type="text"]');
-        if(inputs.length > 0) {
-            if (window.parent.document.activeElement.tagName !== 'INPUT') {
-                inputs[0].focus();
-            }
+        if(inputs.length > 0 && window.parent.document.activeElement.tagName !== 'INPUT') {
+            inputs[0].focus();
         }
     }
     setInterval(setFocus, 500);
@@ -44,6 +41,8 @@ def registrar_en_nube(dni, nombre, tipo, obs=""):
             "DNI": str(dni), "Nombre": nombre, "Fecha": ahora.strftime("%Y-%m-%d"),
             "Hora": ahora.strftime("%H:%M:%S"), "Tipo": tipo, "Observacion": obs, "Tardanza_Min": 0
         }])
+        
+        # Lectura y actualización usando la URL de los secrets
         df_actual = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
         df_final = pd.concat([df_actual, nueva_fila], ignore_index=True)
         conn.update(spreadsheet=url_hoja, worksheet="Sheet1", data=df_final)
@@ -63,12 +62,13 @@ def registrar_en_nube(dni, nombre, tipo, obs=""):
         else:
             st.error(f"Error: {e}")
 
-# --- 4. INTERFAZ ---
+# --- 4. INTERFAZ Y MENÚ ---
 with st.sidebar:
-    st.title("🐺 Panel Admin")
+    st.title("🐺 Gestión Lobo")
     modo = "Marcación"
-    if st.checkbox("Ver Reportes"):
-        if st.text_input("Clave:", type="password") == "Lobo2026":
+    if st.checkbox("Acceso Administrador"):
+        clave = st.text_input("Clave:", type="password")
+        if clave == "Lobo2026":
             modo = "Historial"
 
 col1, col2 = st.columns([1, 4])
@@ -81,47 +81,53 @@ st.divider()
 
 if modo == "Marcación":
     st.write("### DIGITE SU DNI:")
-    
-    # --- AJUSTE DE TAMAÑO DE CASILLA ---
-    # Creamos 3 columnas: la del medio tiene el ancho pequeño para el DNI
-    col_input, col_espacio = st.columns([1, 3]) 
+    # Casilla pequeña: 1 columna para input, 4 de espacio
+    col_input, _ = st.columns([1, 4]) 
     with col_input:
         dni_in = st.text_input("", key=f"dni_{st.session_state.reset_key}", label_visibility="collapsed")
     
     if dni_in:
-        df_emp = pd.read_csv("empleados.csv")
-        emp = df_emp[df_emp['DNI'].astype(str) == str(dni_in)]
-        
-        if not emp.empty:
-            nombre = emp.iloc[0]['Nombre']
-            st.info(f"👤 TRABAJADOR: {nombre}")
-            estado = st.session_state.ultimo_estado.get(str(dni_in), "NADA")
+        try:
+            df_emp = pd.read_csv("empleados.csv")
+            emp = df_emp[df_emp['DNI'].astype(str) == str(dni_in)]
             
-            if estado == "SALIDA":
-                st.warning("🚫 Ya registró su salida definitiva.")
-            else:
-                c1, c2, c3, c4 = st.columns(4)
-                with c1:
-                    if st.button("📥 INGRESO", disabled=(estado != "NADA"), use_container_width=True):
-                        registrar_en_nube(dni_in, nombre, "INGRESO")
-                with c2:
-                    if st.button("🚶 PERMISO", disabled=(estado != "INGRESO" and estado != "RETORNO_PERMISO"), use_container_width=True):
-                        st.session_state.mostrar_obs = True
-                        st.rerun()
-                with c3:
-                    if st.button("🔙 RETORNO", disabled=(estado != "SALIDA_PERMISO"), use_container_width=True):
-                        registrar_en_nube(dni_in, nombre, "RETORNO_PERMISO")
-                with c4:
-                    if st.button("📤 SALIDA", disabled=(estado == "NADA"), use_container_width=True):
-                        registrar_en_nube(dni_in, nombre, "SALIDA")
+            if not emp.empty:
+                nombre = emp.iloc[0]['Nombre']
+                st.info(f"👤 TRABAJADOR: {nombre}")
+                estado = st.session_state.ultimo_estado.get(str(dni_in), "NADA")
+                
+                if estado == "SALIDA":
+                    st.warning("🚫 Salida definitiva registrada hoy.")
+                else:
+                    c1, c2, c3, c4 = st.columns(4)
+                    with c1:
+                        if st.button("📥 INGRESO", disabled=(estado != "NADA"), use_container_width=True):
+                            registrar_en_nube(dni_in, nombre, "INGRESO")
+                    with c2:
+                        if st.button("🚶 PERMISO", disabled=(estado != "INGRESO" and estado != "RETORNO_PERMISO"), use_container_width=True):
+                            st.session_state.mostrar_obs = True
+                            st.rerun()
+                    with c3:
+                        if st.button("🔙 RETORNO", disabled=(estado != "SALIDA_PERMISO"), use_container_width=True):
+                            registrar_en_nube(dni_in, nombre, "RETORNO_PERMISO")
+                    with c4:
+                        if st.button("📤 SALIDA", disabled=(estado == "NADA"), use_container_width=True):
+                            registrar_en_nube(dni_in, nombre, "SALIDA")
 
-                if st.session_state.mostrar_obs:
-                    st.divider()
-                    motivo = st.text_input("MOTIVO DEL PERMISO (Escriba y ENTER):")
-                    if motivo:
-                        registrar_en_nube(dni_in, nombre, "SALIDA_PERMISO", obs=motivo)
-        else:
-            st.error("DNI no registrado.")
+                    if st.session_state.mostrar_obs:
+                        st.divider()
+                        motivo = st.text_input("MOTIVO DEL PERMISO (Escriba y ENTER):")
+                        if motivo:
+                            registrar_en_nube(dni_in, nombre, "SALIDA_PERMISO", obs=motivo)
+            else:
+                st.error("DNI no registrado.")
+        except:
+            st.error("Error base de datos local.")
+
 else:
     st.header("📋 Reporte de Asistencia")
-    st.dataframe(conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0), use_container_width=True)
+    try:
+        df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
+        st.dataframe(df_h, use_container_width=True)
+    except Exception as e:
+        st.error(f"Error al cargar historial: {e}")
