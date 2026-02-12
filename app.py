@@ -6,14 +6,13 @@ import os
 import time
 import streamlit.components.v1 as components
 
-# --- 1. CONFIGURACIÓN ESTABLE ---
+# --- 1. CONFIGURACIÓN (CONGELADA) ---
 LOGO_ARCHIVO = "logo_lobo.png"
 def obtener_hora_peru():
     return datetime.now(timezone.utc) - timedelta(hours=5)
 
-# --- 2. CONFIGURACIÓN DE PÁGINA Y FOCO ---
+# --- 2. INTERFAZ Y FOCO (CONGELADA) ---
 st.set_page_config(page_title="Asistencia Lobo", layout="wide")
-
 components.html("""
     <script>
     function setFocus(){
@@ -26,7 +25,7 @@ components.html("""
     </script>
 """, height=0)
 
-# --- 3. CONEXIÓN Y ESTADOS ---
+# --- 3. CONEXIÓN Y ESTADOS (CONGELADA) ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 url_hoja = st.secrets["connections"]["gsheets"]["spreadsheet"]
 
@@ -35,7 +34,7 @@ if "mostrar_obs" not in st.session_state: st.session_state.mostrar_obs = False
 if "ultimo_dni" not in st.session_state: st.session_state.ultimo_dni = ""
 if "estado_local" not in st.session_state: st.session_state.estado_local = "NADA"
 
-# --- 4. FUNCIÓN DE GUARDADO (NO SE TOCA LO QUE FUNCIONA) ---
+# --- 4. FUNCIÓN DE GUARDADO (CONGELADA - FUNCIONA BIEN) ---
 def registrar_dato(dni, nombre, tipo, obs=""):
     try:
         ahora = obtener_hora_peru()
@@ -68,7 +67,7 @@ def registrar_dato(dni, nombre, tipo, obs=""):
         else:
             st.error(f"Error: {e}")
 
-# --- 5. MENÚ LATERAL (CON PANEL DE ADMINISTRADOR) ---
+# --- 5. MENÚ LATERAL ---
 with st.sidebar:
     st.title("🐺 Panel Administrativo")
     modo = "Marcación"
@@ -79,7 +78,7 @@ with st.sidebar:
         elif clave != "":
             st.error("Clave incorrecta")
 
-# --- 6. DISEÑO PRINCIPAL ---
+# --- 6. DISEÑO PRINCIPAL (CONGELADO) ---
 col_logo, col_titulo = st.columns([1, 4])
 with col_logo:
     if os.path.exists(LOGO_ARCHIVO): st.image(LOGO_ARCHIVO, width=180)
@@ -88,7 +87,7 @@ with col_titulo:
 
 st.divider()
 
-# --- 7. LÓGICA DE MARCACIÓN ---
+# --- 7. LÓGICA DE MARCACIÓN (CONGELADA - FUNCIONA BIEN) ---
 if modo == "Marcación":
     st.write("### DIGITE SU DNI:")
     c_dni, _ = st.columns([1, 3])
@@ -149,16 +148,21 @@ if modo == "Marcación":
         except Exception as e:
             st.error(f"Error: {e}")
 
-# --- 8. HISTORIAL (ESTA ES LA PARTE QUE NO CARGABA) ---
+# --- 8. HISTORIAL (ESTA ES LA PARTE CORREGIDA) ---
 elif modo == "Historial Completo":
     st.header("📋 Historial de Asistencia")
     try:
-        # Intentamos leer la hoja
+        # Forzamos lectura fresca
         df_historial = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
-        if df_historial is not None:
-            st.dataframe(df_historial, use_container_width=True)
-            # Botón para descargar
-            csv = df_historial.to_csv(index=False).encode('utf-8')
-            st.download_button("📥 Descargar Excel (CSV)", data=csv, file_name="historial_asistencia.csv", mime="text/csv")
+        st.dataframe(df_historial, use_container_width=True)
     except Exception as e:
-        st.error(f"⚠️ No se pudo cargar el historial. Verifica que la pestaña en Drive se llame 'Sheet1'. Error: {e}")
+        # Si da el error 200, intentamos una segunda lectura silenciosa
+        if "200" in str(e):
+            try:
+                time.sleep(1)
+                df_retry = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
+                st.dataframe(df_retry, use_container_width=True)
+            except:
+                st.warning("⚠️ El servidor de Google está lento. Por favor, refresca la página o intenta en un minuto.")
+        else:
+            st.error(f"Error al cargar historial: {e}")
