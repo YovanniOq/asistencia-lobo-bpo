@@ -30,11 +30,10 @@ components.html("""
 conn = st.connection("gsheets", type=GSheetsConnection)
 url_hoja = st.secrets["connections"]["gsheets"]["spreadsheet"]
 
-# Inicializar estados de sesión
 if "reset_key" not in st.session_state: st.session_state.reset_key = 0
 if "mostrar_obs" not in st.session_state: st.session_state.mostrar_obs = False
 
-# --- 4. FUNCIÓN DE GUARDADO (LA QUE FUNCIONA) ---
+# --- 4. FUNCIÓN DE GUARDADO ---
 def registrar_dato(dni, nombre, tipo, obs=""):
     try:
         ahora = obtener_hora_peru()
@@ -43,11 +42,8 @@ def registrar_dato(dni, nombre, tipo, obs=""):
             "Hora": ahora.strftime("%H:%M:%S"), "Tipo": tipo, "Observacion": obs, "Tardanza_Min": 0
         }])
         
-        # Leemos para concatenar
         df_actual = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
         df_final = pd.concat([df_actual, nueva_fila], ignore_index=True)
-        
-        # Subimos a Drive
         conn.update(spreadsheet=url_hoja, worksheet="Sheet1", data=df_final)
         
         st.success(f"✅ REGISTRADO: {tipo}")
@@ -56,7 +52,6 @@ def registrar_dato(dni, nombre, tipo, obs=""):
         st.session_state.reset_key += 1
         st.session_state.mostrar_obs = False
         st.rerun()
-        
     except Exception as e:
         if "200" in str(e):
             st.session_state.reset_key += 1
@@ -65,7 +60,7 @@ def registrar_dato(dni, nombre, tipo, obs=""):
         else:
             st.error(f"Error: {e}")
 
-# --- 5. MENÚ LATERAL (EL QUE SE OCULTA) ---
+# --- 5. MENÚ LATERAL ---
 with st.sidebar:
     st.title("🐺 Gestión Lobo")
     modo = "Marcación"
@@ -73,8 +68,6 @@ with st.sidebar:
         clave = st.text_input("Contraseña:", type="password")
         if clave == "Lobo2026":
             modo = st.radio("Módulo:", ["Marcación", "Historial Completo"])
-        elif clave != "":
-            st.error("Clave incorrecta")
 
 # --- 6. DISEÑO PRINCIPAL ---
 col_logo, col_titulo = st.columns([1, 4])
@@ -93,45 +86,47 @@ if modo == "Marcación":
         dni_in = st.text_input("", key=f"in_{st.session_state.reset_key}", label_visibility="collapsed")
 
     if dni_in:
-        df_emp = pd.read_csv("empleados.csv")
-        emp = df_emp[df_emp['DNI'].astype(str) == str(dni_in)]
-        
-        if not emp.empty:
-            nombre = emp.iloc[0]['Nombre']
-            st.info(f"👤 TRABAJADOR: {nombre}")
+        try:
+            df_emp = pd.read_csv("empleados.csv")
+            emp = df_emp[df_emp['DNI'].astype(str) == str(dni_in)]
             
-            # Consultar nube para bloquear botones
-            try:
-                df_cloud = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
-                hoy = obtener_hora_peru().strftime("%Y-%m-%d")
-                marcs_hoy = df_cloud[(df_cloud['DNI'].astype(str) == str(dni_in)) & (df_cloud['Fecha'] == hoy)]
-                ya_ingreso = not marcs_hoy[marcs_hoy['Tipo'] == "INGRESO"].empty
-                ultimo = marcs_hoy.iloc[-1]['Tipo'] if not marcs_hoy.empty else "NADA"
-            except:
-                ya_ingreso = False; ultimo = "NADA"
+            if not emp.empty:
+                nombre = emp.iloc[0]['Nombre']
+                st.info(f"👤 TRABAJADOR: {nombre}")
+                
+                # REVISIÓN DE ESTADO FLEXIBLE
+                try:
+                    df_cloud = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
+                    hoy = obtener_hora_peru().strftime("%Y-%m-%d")
+                    marcs_hoy = df_cloud[(df_cloud['DNI'].astype(str) == str(dni_in)) & (df_cloud['Fecha'] == hoy)]
+                    ultimo = marcs_hoy.iloc[-1]['Tipo'] if not marcs_hoy.empty else "NADA"
+                except:
+                    ultimo = "NADA"
 
-            col1, col2, col3, col4 = st.columns(4)
-            with col1:
-                if st.button("📥 INGRESO", disabled=ya_ingreso, use_container_width=True):
-                    registrar_dato(dni_in, nombre, "INGRESO")
-            with col2:
-                if st.button("🚶 PERMISO", disabled=(not ya_ingreso or ultimo == "SALIDA_PERMISO"), use_container_width=True):
-                    st.session_state.mostrar_obs = True
-                    st.rerun()
-            with col3:
-                if st.button("🔙 RETORNO", disabled=(ultimo != "SALIDA_PERMISO"), use_container_width=True):
-                    registrar_dato(dni_in, nombre, "RETORNO_PERMISO")
-            with col4:
-                if st.button("📤 SALIDA", disabled=not ya_ingreso, use_container_width=True):
-                    registrar_dato(dni_in, nombre, "SALIDA")
+                col1, col2, col3, col4 = st.columns(4)
+                with col1: # INGRESO: Se bloquea solo si el ÚLTIMO fue ingreso (evita doble click)
+                    if st.button("📥 INGRESO", disabled=(ultimo == "INGRESO"), use_container_width=True):
+                        registrar_dato(dni_in, nombre, "INGRESO")
+                with col2: # PERMISO: Habilitado siempre que no esté ya de permiso
+                    if st.button("🚶 PERMISO", disabled=(ultimo == "SALIDA_PERMISO"), use_container_width=True):
+                        st.session_state.mostrar_obs = True
+                        st.rerun()
+                with col3: # RETORNO: Solo si el último fue permiso
+                    if st.button("🔙 RETORNO", disabled=(ultimo != "SALIDA_PERMISO"), use_container_width=True):
+                        registrar_dato(dni_in, nombre, "RETORNO_PERMISO")
+                with col4: # SALIDA: Siempre habilitado como salida de emergencia
+                    if st.button("📤 SALIDA", use_container_width=True):
+                        registrar_dato(dni_in, nombre, "SALIDA")
 
-            if st.session_state.mostrar_obs:
-                st.divider()
-                motivo = st.text_input("MOTIVO DEL PERMISO (Escriba y ENTER):")
-                if motivo:
-                    registrar_dato(dni_in, nombre, "SALIDA_PERMISO", obs=motivo)
-        else:
-            st.error("DNI no registrado.")
+                if st.session_state.mostrar_obs:
+                    st.divider()
+                    motivo = st.text_input("MOTIVO DEL PERMISO (Escriba y ENTER):")
+                    if motivo:
+                        registrar_dato(dni_in, nombre, "SALIDA_PERMISO", obs=motivo)
+            else:
+                st.error("DNI no registrado.")
+        except Exception as e:
+            st.error(f"Error: {e}")
 
 elif modo == "Historial Completo":
     st.header("📋 Historial en Drive")
@@ -139,4 +134,4 @@ elif modo == "Historial Completo":
         df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
         st.dataframe(df_h, use_container_width=True)
     except:
-        st.warning("Cargando datos desde Google Drive...")
+        st.warning("No se pudo cargar el historial. Revise la pestaña 'Sheet1' en Drive.")
