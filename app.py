@@ -34,7 +34,7 @@ if "reset_key" not in st.session_state: st.session_state.reset_key = 0
 if "mostrar_obs" not in st.session_state: st.session_state.mostrar_obs = False
 if "ultimo_estado_local" not in st.session_state: st.session_state.ultimo_estado_local = {}
 
-# --- 4. FUNCIÓN DE GUARDADO (SINTAXIS CORREGIDA) ---
+# --- 4. FUNCIÓN DE GUARDADO ---
 def registrar_dato(dni, nombre, tipo, obs=""):
     try:
         ahora = obtener_hora_peru()
@@ -43,33 +43,30 @@ def registrar_dato(dni, nombre, tipo, obs=""):
             "Hora": ahora.strftime("%H:%M:%S"), "Tipo": tipo, "Observacion": obs, "Tardanza_Min": 0
         }])
         
-        # Guardamos en memoria local antes para que la interfaz sea rápida
+        # Guardamos el estado final en memoria inmediatamente
         st.session_state.ultimo_estado_local[str(dni)] = tipo
         
-        # LECTURA Y ACTUALIZACIÓN CORREGIDAS
         df_actual = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
         df_final = pd.concat([df_actual, nueva_fila], ignore_index=True)
         conn.update(spreadsheet=url_hoja, worksheet="Sheet1", data=df_final)
         
-        st.success(f"✅ {tipo} registrado con éxito.")
+        st.success(f"✅ {tipo} registrado.")
         st.balloons()
         time.sleep(1)
         
-        # Solo reseteamos la pantalla si no es una salida a permiso (para poder escribir el motivo)
-        if tipo != "SALIDA_PERMISO":
-            st.session_state.reset_key += 1
-            st.session_state.mostrar_obs = False
+        # Limpiamos pantalla para el siguiente
+        st.session_state.reset_key += 1
+        st.session_state.mostrar_obs = False
         st.rerun()
         
     except Exception as e:
-        # Bypass si Google responde lento (Código 200)
         if "200" in str(e) or "OK" in str(e):
             st.session_state.ultimo_estado_local[str(dni)] = tipo
             st.session_state.reset_key += 1
             st.session_state.mostrar_obs = False
             st.rerun()
         else:
-            st.error(f"Error de sistema: {e}")
+            st.error(f"Error: {e}")
 
 # --- 5. MENÚ LATERAL ---
 with st.sidebar:
@@ -97,42 +94,48 @@ if modo == "Marcación":
         dni_in = st.text_input("", key=f"input_{st.session_state.reset_key}", label_visibility="collapsed")
 
     if dni_in:
-        try:
-            df_emp = pd.read_csv("empleados.csv")
-            emp = df_emp[df_emp['DNI'].astype(str) == str(dni_in)]
+        df_emp = pd.read_csv("empleados.csv")
+        emp = df_emp[df_emp['DNI'].astype(str) == str(dni_in)]
+        
+        if not emp.empty:
+            nombre = emp.iloc[0]['Nombre']
+            st.info(f"👤 TRABAJADOR: {nombre}")
             
-            if not emp.empty:
-                nombre = emp.iloc[0]['Nombre']
-                st.info(f"👤 TRABAJADOR: {nombre}")
-                
-                # Sincronización: Memoria Local es prioridad 1, Nube es prioridad 2
-                ultimo = st.session_state.ultimo_estado_local.get(str(dni_in), "NADA")
-                
-                if ultimo == "NADA":
-                    try:
-                        df_cloud = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
-                        hoy = obtener_hora_peru().strftime("%Y-%m-%d")
-                        marcs_hoy = df_cloud[(df_cloud['DNI'].astype(str) == str(dni_in)) & (df_cloud['Fecha'] == hoy)]
-                        if not marcs_hoy.empty:
+            # Sincronización de estado
+            ultimo = st.session_state.ultimo_estado_local.get(str(dni_in), "NADA")
+            
+            if ultimo == "NADA":
+                try:
+                    df_cloud = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
+                    hoy = obtener_hora_peru().strftime("%Y-%m-%d")
+                    marcs_hoy = df_cloud[(df_cloud['DNI'].astype(str) == str(dni_in)) & (df_cloud['Fecha'] == hoy)]
+                    if not marcs_hoy.empty:
+                        # Si en algún momento del día marcó SALIDA, ese es su estado final
+                        if not marcs_hoy[marcs_hoy['Tipo'] == "SALIDA"].empty:
+                            ultimo = "SALIDA"
+                        else:
                             ultimo = marcs_hoy.iloc[-1]['Tipo']
-                    except:
-                        pass
+                except:
+                    pass
 
-                # LÓGICA DE BOTONES BASADA EN MEMORIA
+            # --- BLOQUEO TOTAL ---
+            if ultimo == "SALIDA":
+                st.warning(f"🚫 {nombre}, ya registraste tu SALIDA definitiva por hoy. No se permiten más marcaciones.")
+            else:
                 ya_ingreso = (ultimo in ["INGRESO", "RETORNO_PERMISO", "SALIDA_PERMISO"])
                 
                 col1, col2, col3, col4 = st.columns(4)
-                with col1: # INGRESO
+                with col1:
                     if st.button("📥 INGRESO", disabled=ya_ingreso, use_container_width=True):
                         registrar_dato(dni_in, nombre, "INGRESO")
-                with col2: # PERMISO
+                with col2:
                     if st.button("🚶 PERMISO", disabled=(not ya_ingreso or ultimo == "SALIDA_PERMISO"), use_container_width=True):
                         st.session_state.mostrar_obs = True
                         st.rerun()
-                with col3: # RETORNO (Se habilita al instante si el estado es SALIDA_PERMISO)
+                with col3:
                     if st.button("🔙 RETORNO", disabled=(ultimo != "SALIDA_PERMISO"), use_container_width=True):
                         registrar_dato(dni_in, nombre, "RETORNO_PERMISO")
-                with col4: # SALIDA
+                with col4:
                     if st.button("📤 SALIDA", disabled=not ya_ingreso, use_container_width=True):
                         registrar_dato(dni_in, nombre, "SALIDA")
 
@@ -141,10 +144,8 @@ if modo == "Marcación":
                     motivo = st.text_input("MOTIVO DEL PERMISO (Escriba y ENTER):")
                     if motivo:
                         registrar_dato(dni_in, nombre, "SALIDA_PERMISO", obs=motivo)
-            else:
-                st.error("DNI no registrado.")
-        except Exception as e:
-            st.error(f"Error técnico: {e}")
+        else:
+            st.error("DNI no registrado.")
 
 elif modo == "Historial Completo":
     st.header("📋 Historial en Drive")
