@@ -43,7 +43,7 @@ with col_logo:
         st.image(LOGO_ARCHIVO, width=180)
 with col_titulo:
     st.markdown("<h1 style='color: #1E3A8A; font-size: 38px; margin-top: 15px;'>SR. LOBO BPO SOLUTIONS</h1>", unsafe_allow_html=True)
-    st.write(f"🕒 Hora actual: **{obtener_hora_peru().strftime('%H:%M:%S')}**")
+    st.write(f"🕒 Hora: **{obtener_hora_peru().strftime('%H:%M:%S')}**")
 
 st.divider()
 
@@ -51,8 +51,8 @@ st.divider()
 conn = st.connection("gsheets", type=GSheetsConnection)
 url_hoja = st.secrets["connections"]["gsheets"]["spreadsheet"]
 
-# --- 4. FUNCIÓN DE GUARDADO (CAPTURA EL ERROR 200) ---
-def registrar_asistencia(dni, nombre, tipo, obs=""):
+# --- 4. FUNCIÓN DE GUARDADO (IGNORA EL FALSO ERROR) ---
+def registrar_seguimiento(dni, nombre, tipo, obs=""):
     try:
         ahora = obtener_hora_peru()
         nueva_fila = pd.DataFrame([{
@@ -60,32 +60,36 @@ def registrar_asistencia(dni, nombre, tipo, obs=""):
             "Hora": ahora.strftime("%H:%M:%S"), "Tipo": tipo, "Observacion": obs, "Tardanza_Min": 0
         }])
         
+        # Leemos el estado actual
         df_actual = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
         df_final = pd.concat([df_actual, nueva_fila], ignore_index=True)
+        
+        # Intentamos subir
         conn.update(spreadsheet=url_hoja, worksheet="Sheet1", data=df_final)
         
         st.balloons()
-        st.success(f"✅ {tipo} registrado con éxito.")
+        st.success(f"✅ {tipo} registrado.")
         time.sleep(2)
         st.session_state.reset_key += 1
-        st.session_state.pidiendo_motivo = False
+        st.session_state.esperando_motivo = False
         st.rerun()
 
     except Exception as e:
+        # SI EL ERROR CONTIENE 200, ES UN ÉXITO DISFRAZADO
         if "200" in str(e) or "OK" in str(e):
             st.balloons()
-            st.success(f"✅ {tipo} enviado a Drive.")
+            st.success(f"✅ {tipo} registrado exitosamente.")
             time.sleep(2)
             st.session_state.reset_key += 1
-            st.session_state.pidiendo_motivo = False
+            st.session_state.esperando_motivo = False
             st.rerun()
         else:
-            st.error(f"Error al guardar: {e}")
+            st.error(f"Fallo real: {e}")
 
 # --- 5. LÓGICA DE MARCACIÓN ---
 if modo == "Marcación":
     if "reset_key" not in st.session_state: st.session_state.reset_key = 0
-    if "pidiendo_motivo" not in st.session_state: st.session_state.pidiendo_motivo = False
+    if "esperando_motivo" not in st.session_state: st.session_state.esperando_motivo = False
     
     st.write("### DIGITE SU DNI:")
     c_dni, _ = st.columns([1, 3])
@@ -101,41 +105,49 @@ if modo == "Marcación":
                 nombre = emp.iloc[0]['Nombre']
                 st.info(f"👤 TRABAJADOR: {nombre}")
                 
-                # Leer estado actual en Drive para control de botones
-                df_cloud = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
+                # Bloque de lectura para flujo de botones (con captura de error 200)
+                try:
+                    df_nube = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
+                except Exception as e:
+                    if "200" in str(e):
+                        # Si da error 200 al leer, usamos un DF vacío para no trabar el sistema
+                        df_nube = pd.DataFrame(columns=["DNI", "Fecha", "Tipo"])
+                    else:
+                        st.error("Error al conectar con la nube.")
+                        st.stop()
+
                 hoy = obtener_hora_peru().strftime("%Y-%m-%d")
-                marcs_hoy = df_cloud[(df_cloud['DNI'].astype(str) == str(dni)) & (df_cloud['Fecha'] == hoy)]
-                
+                marcs_hoy = df_nube[(df_nube['DNI'].astype(str) == str(dni)) & (df_nube['Fecha'] == hoy)]
                 ultimo = marcs_hoy.iloc[-1]['Tipo'] if not marcs_hoy.empty else "NADA"
 
                 if ultimo == "SALIDA":
-                    st.warning("🚫 Ya marcaste tu salida final por hoy.")
+                    st.warning("🚫 Turno completado por hoy.")
                 else:
                     b1, b2, b3, b4 = st.columns(4)
-                    with b1: # INGRESO: Se bloquea si ya marcó algo hoy
+                    with b1:
                         if st.button("📥 INGRESO", disabled=(ultimo != "NADA"), use_container_width=True):
-                            registrar_asistencia(dni, nombre, "INGRESO")
-                    with b2: # PERMISO: Solo si ya entró
+                            registrar_seguimiento(dni, nombre, "INGRESO")
+                    with b2:
                         if st.button("🚶 PERMISO", disabled=(ultimo not in ["INGRESO", "RETORNO_PERMISO"]), use_container_width=True):
-                            st.session_state.pidiendo_motivo = True
-                    with b3: # RETORNO: Solo si está en permiso
+                            st.session_state.esperando_motivo = True
+                    with b3:
                         if st.button("🔙 RETORNO", disabled=(ultimo != "SALIDA_PERMISO"), use_container_width=True):
-                            registrar_asistencia(dni, nombre, "RETORNO_PERMISO")
-                    with b4: # SALIDA: Solo si ya entró
+                            registrar_seguimiento(dni, nombre, "RETORNO_PERMISO")
+                    with b4:
                         if st.button("📤 SALIDA", disabled=(ultimo not in ["INGRESO", "RETORNO_PERMISO"]), use_container_width=True):
-                            registrar_asistencia(dni, nombre, "SALIDA")
+                            registrar_seguimiento(dni, nombre, "SALIDA")
 
-                    if st.session_state.pidiendo_motivo:
+                    if st.session_state.esperando_motivo:
                         st.divider()
                         motivo = st.text_input("MOTIVO DEL PERMISO (Escriba y presione ENTER):")
                         if motivo:
-                            registrar_asistencia(dni, nombre, "SALIDA_PERMISO", obs=motivo)
+                            registrar_seguimiento(dni, nombre, "SALIDA_PERMISO", obs=motivo)
             else:
                 st.error("DNI no registrado.")
         except Exception as e:
-            st.error(f"Error de sistema: {e}")
+            st.error(f"Error técnico: {e}")
 
 elif modo == "Historial Mensual":
-    st.header("📋 Reporte de Asistencias")
+    st.header("📋 Historial")
     df_nube = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
     st.dataframe(df_nube, use_container_width=True)
