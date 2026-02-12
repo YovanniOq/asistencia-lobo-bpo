@@ -42,7 +42,7 @@ def registrar_en_nube(dni, nombre, tipo, obs=""):
             "Hora": ahora.strftime("%H:%M:%S"), "Tipo": tipo, "Observacion": obs, "Tardanza_Min": 0
         }])
         
-        # Lectura y actualización usando la URL de los secrets
+        # Lectura y actualización
         df_actual = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
         df_final = pd.concat([df_actual, nueva_fila], ignore_index=True)
         conn.update(spreadsheet=url_hoja, worksheet="Sheet1", data=df_final)
@@ -81,7 +81,6 @@ st.divider()
 
 if modo == "Marcación":
     st.write("### DIGITE SU DNI:")
-    # Casilla pequeña: 1 columna para input, 4 de espacio
     col_input, _ = st.columns([1, 4]) 
     with col_input:
         dni_in = st.text_input("", key=f"dni_{st.session_state.reset_key}", label_visibility="collapsed")
