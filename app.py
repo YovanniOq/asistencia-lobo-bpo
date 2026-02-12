@@ -8,22 +8,14 @@ import streamlit.components.v1 as components
 
 # --- 1. CONFIGURACIÓN ---
 st.set_page_config(page_title="Asistencia Lobo", layout="wide")
+COSTO_MINUTO = 0.15  # <--- AJUSTA AQUÍ: Cuánto cuesta cada minuto de tardanza
+HORA_ENTRADA_OFICIAL = "08:00:00" # Formato HH:MM:SS
 
 def obtener_hora_peru():
     return datetime.now(timezone.utc) - timedelta(hours=5)
 
-# Foco automático en la casilla de DNI
-components.html("""
-    <script>
-    function setFocus(){
-        var inputs = window.parent.document.querySelectorAll('input[type="text"]');
-        if(inputs.length > 0 && window.parent.document.activeElement.tagName !== 'INPUT') {
-            inputs[0].focus();
-        }
-    }
-    setInterval(setFocus, 500);
-    </script>
-""", height=0)
+# Foco automático
+components.html("<script>setInterval(function(){var inputs = window.parent.document.querySelectorAll('input'); if(inputs.length > 0 && window.parent.document.activeElement.tagName !== 'INPUT') inputs[0].focus();}, 500);</script>", height=0)
 
 # --- 2. CONEXIÓN ---
 conn = st.connection("gsheets", type=GSheetsConnection)
@@ -33,13 +25,31 @@ if "reset_key" not in st.session_state: st.session_state.reset_key = 0
 if "mostrar_obs" not in st.session_state: st.session_state.mostrar_obs = False
 if "ultimo_estado" not in st.session_state: st.session_state.ultimo_estado = {}
 
-# --- 3. FUNCIÓN DE GRABACIÓN ---
+# --- 3. FUNCIÓN DE GRABACIÓN CON CÁLCULO MONETARIO ---
 def registrar_en_nube(dni, nombre, tipo, obs=""):
     try:
         ahora = obtener_hora_peru()
+        tardanza_min = 0
+        descuento = 0
+        
+        # Solo calculamos tardanza si es un INGRESO
+        if tipo == "INGRESO":
+            hora_actual = ahora.time()
+            hora_limite = datetime.strptime(HORA_ENTRADA_OFICIAL, "%H:%M:%S").time()
+            if hora_actual > hora_limite:
+                diff = datetime.combine(datetime.today(), hora_actual) - datetime.combine(datetime.today(), hora_limite)
+                tardanza_min = int(diff.total_seconds() / 60)
+                descuento = round(tardanza_min * COSTO_MINUTO, 2)
+
         nueva_fila = pd.DataFrame([{
-            "DNI": str(dni), "Nombre": nombre, "Fecha": ahora.strftime("%Y-%m-%d"),
-            "Hora": ahora.strftime("%H:%M:%S"), "Tipo": tipo, "Observacion": obs, "Tardanza_Min": 0
+            "DNI": str(dni), 
+            "Nombre": nombre, 
+            "Fecha": ahora.strftime("%Y-%m-%d"),
+            "Hora": ahora.strftime("%H:%M:%S"), 
+            "Tipo": tipo, 
+            "Observacion": obs, 
+            "Tardanza_Min": tardanza_min,
+            "Descuento_Soles": descuento
         }])
         
         df_actual = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
@@ -47,20 +57,15 @@ def registrar_en_nube(dni, nombre, tipo, obs=""):
         conn.update(spreadsheet=url_hoja, worksheet="Sheet1", data=df_final)
         
         st.session_state.ultimo_estado[str(dni)] = tipo
-        st.success(f"✅ {tipo} REGISTRADO")
-        time.sleep(1)
+        st.success(f"✅ {tipo} REGISTRADO. Tardanza: {tardanza_min} min. Descuento: S/ {descuento}")
+        time.sleep(1.5)
         st.session_state.reset_key += 1
         st.session_state.mostrar_obs = False
         st.rerun()
     except Exception as e:
-        if "200" in str(e):
-            st.session_state.ultimo_estado[str(dni)] = tipo
-            st.session_state.reset_key += 1
-            st.rerun()
-        else:
-            st.error(f"Error de conexión: {e}")
+        st.error(f"Error de grabado: {e}")
 
-# --- 4. INTERFAZ ---
+# --- 4. INTERFAZ Y MENÚ ---
 with st.sidebar:
     st.title("🐺 Gestión Lobo")
     modo = "Marcación"
@@ -78,22 +83,21 @@ st.divider()
 
 if modo == "Marcación":
     st.write("### DIGITE SU DNI:")
-    col_input, _ = st.columns([1, 4]) 
-    with col_input:
+    c_in, _ = st.columns([1, 4])
+    with c_in:
         dni_in = st.text_input("", key=f"dni_{st.session_state.reset_key}", label_visibility="collapsed")
     
     if dni_in:
         try:
             df_emp = pd.read_csv("empleados.csv", dtype={'DNI': str})
             emp = df_emp[df_emp['DNI'] == str(dni_in)]
-            
             if not emp.empty:
                 nombre = emp.iloc[0]['Nombre']
                 st.info(f"👤 TRABAJADOR: {nombre}")
                 estado = st.session_state.ultimo_estado.get(str(dni_in), "NADA")
                 
                 if estado == "SALIDA":
-                    st.warning("🚫 Turno finalizado hoy.")
+                    st.warning("🚫 Turno finalizado.")
                 else:
                     c1, c2, c3, c4 = st.columns(4)
                     with c1:
@@ -112,41 +116,40 @@ if modo == "Marcación":
 
                     if st.session_state.mostrar_obs:
                         st.divider()
-                        motivo = st.text_input("MOTIVO DEL PERMISO (Escriba y ENTER):")
-                        if motivo:
-                            registrar_en_nube(dni_in, nombre, "SALIDA_PERMISO", obs=motivo)
-            else:
-                st.error("DNI no registrado.")
-        except Exception:
-            st.error("Error al leer empleados.csv")
+                        motivo = st.text_input("MOTIVO DEL PERMISO:")
+                        if motivo: registrar_en_nube(dni_in, nombre, "SALIDA_PERMISO", obs=motivo)
+            else: st.error("DNI no registrado.")
+        except: st.error("Error base local.")
 
-else:
-    # --- MÓDULO ADMIN PROTEGIDO ---
-    st.header("📋 Reporte de Asistencia")
+else: # --- REPORTE CON DESCUENTOS ---
+    st.header("📋 Reporte con Descuento Monetario")
     try:
         df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
-        
         if not df_h.empty:
-            # Limpieza de fechas para evitar errores
+            # Filtro por Mes y Año (Lógica protegida)
             df_h['Fecha_dt'] = pd.to_datetime(df_h['Fecha'], errors='coerce')
             df_h = df_h.dropna(subset=['Fecha_dt'])
             
-            f1, f2, _ = st.columns([1, 1, 2])
+            f1, f2, f3 = st.columns([1, 1, 2])
             with f1:
                 anios = sorted(df_h['Fecha_dt'].dt.year.unique(), reverse=True)
-                sel_anio = st.selectbox("Año", anios if anios else [2026])
+                sel_anio = st.selectbox("Año", anios)
             with f2:
-                meses_nombres = {1:"Enero", 2:"Febrero", 3:"Marzo", 4:"Abril", 5:"Mayo", 6:"Junio", 
-                                 7:"Julio", 8:"Agosto", 9:"Septiembre", 10:"Octubre", 11:"Noviembre", 12:"Diciembre"}
-                df_anio = df_h[df_h['Fecha_dt'].dt.year == sel_anio]
-                meses_disp = sorted(df_anio['Fecha_dt'].dt.month.unique())
-                sel_mes = st.selectbox("Mes", meses_disp if meses_disp else [2], format_func=lambda x: meses_nombres.get(x, "N/A"))
+                meses = sorted(df_h[df_h['Fecha_dt'].dt.year == sel_anio]['Fecha_dt'].dt.month.unique())
+                sel_mes = st.selectbox("Mes", meses)
             
-            df_filtrado = df_h[(df_h['Fecha_dt'].dt.year == sel_anio) & (df_h['Fecha_dt'].dt.month == sel_mes)]
-            df_mostrar = df_filtrado.drop(columns=['Fecha_dt'])
-            st.dataframe(df_mostrar, use_container_width=True)
+            df_f = df_h[(df_h['Fecha_dt'].dt.year == sel_anio) & (df_h['Fecha_dt'].dt.month == sel_mes)]
+            df_f = df_f.drop(columns=['Fecha_dt'])
+            
+            st.dataframe(df_f, use_container_width=True)
+            
+            # Resumen Monetario
+            total_desc = df_f['Descuento_Soles'].sum()
+            st.metric("Total Descuentos del Mes", f"S/ {total_desc:.2f}")
+            
+            csv = df_f.to_csv(index=False).encode('utf-8')
+            st.download_button("📥 Descargar Reporte", csv, "asistencia_lobo.csv", "text/csv")
         else:
-            st.info("Aún no hay registros en la base de datos.")
-            
-    except Exception:
-        st.warning("⏳ Sincronizando datos con Google Drive...")
+            st.info("Sin registros.")
+    except Exception as e:
+        st.error(f"Error en reporte: {e}")
