@@ -16,8 +16,7 @@ HORA_ENTRADA_OFICIAL = "08:00:00"
 def obtener_hora_peru():
     return datetime.now(timezone.utc) - timedelta(hours=5)
 
-# --- JAVASCRIPT DE FOCO MEJORADO ---
-# Este script es más robusto: fuerza el foco cada 500ms si el usuario no está escribiendo en otro lado
+# Foco automático blindado
 components.html("""
     <script>
     const forceFocus = () => {
@@ -29,7 +28,6 @@ components.html("""
             }
         }
     };
-    // Ejecutar inmediatamente y luego periódicamente
     setTimeout(forceFocus, 500);
     setInterval(forceFocus, 1000);
     </script>
@@ -82,18 +80,8 @@ with st.sidebar:
     st.title("🐺 Gestión Lobo")
     modo = "Marcación"
     if st.checkbox("Acceso Administrador"):
-        if st.text_input("Clave:", type="password") == "Lobo2026":
+        clave_admin = st.text_input("Clave:", type="password")
+        if clave_admin == "Lobo2026":
             modo = "Historial"
 
-col1, col2 = st.columns([1, 4])
-with col1:
-    if os.path.exists("logo_lobo.png"): st.image("logo_lobo.png", width=150)
-with col2:
-    st.markdown("<h1 style='color: #1E3A8A;'>SR. LOBO BPO SOLUTIONS</h1>", unsafe_allow_html=True)
-
-st.divider()
-
-if modo == "Marcación":
-    st.write("### DIGITE SU DNI:")
-    c_in, _ = st.columns([1, 4])
-    with c_in:
+col1, col2
