@@ -9,14 +9,14 @@ import streamlit.components.v1 as components
 # --- 1. CONFIGURACIÓN ---
 st.set_page_config(page_title="Asistencia Lobo", layout="wide")
 
-# Parámetros administrativos
+# PARÁMETROS ADMINISTRATIVOS
 COSTO_MINUTO = 0.15  
 HORA_ENTRADA_OFICIAL = "08:00:00" 
 
 def obtener_hora_peru():
     return datetime.now(timezone.utc) - timedelta(hours=5)
 
-# Foco automático persistente para que no tengan que hacer clic
+# --- JAVASCRIPT DE FOCO MEJORADO ---
 components.html("""
     <script>
     const forceFocus = () => {
@@ -57,9 +57,14 @@ def registrar_en_nube(dni, nombre, tipo, obs=""):
                 descuento = round(tardanza_min * COSTO_MINUTO, 2)
 
         nueva_fila = pd.DataFrame([{
-            "DNI": str(dni), "Nombre": nombre, "Fecha": ahora.strftime("%Y-%m-%d"),
-            "Hora": ahora.strftime("%H:%M:%S"), "Tipo": tipo, "Observacion": obs, 
-            "Tardanza_Min": tardanza_min, "Descuento_Soles": descuento
+            "DNI": str(dni), 
+            "Nombre": nombre, 
+            "Fecha": ahora.strftime("%Y-%m-%d"),
+            "Hora": ahora.strftime("%H:%M:%S"), 
+            "Tipo": tipo, 
+            "Observacion": obs, 
+            "Tardanza_Min": tardanza_min, 
+            "Descuento_Soles": descuento
         }])
         
         df_actual = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
@@ -67,13 +72,13 @@ def registrar_en_nube(dni, nombre, tipo, obs=""):
         conn.update(spreadsheet=url_hoja, worksheet="Sheet1", data=df_final)
         
         st.session_state.ultimo_estado[str(dni)] = tipo
-        st.success(f"✅ {tipo} REGISTRADO | Descuento: S/ {descuento}")
+        st.success(f"✅ {tipo} REGISTRADO | Tardanza: {tardanza_min} min | S/ {descuento}")
         time.sleep(1.2)
         st.session_state.reset_key += 1
         st.session_state.mostrar_obs = False
         st.rerun()
     except Exception as e:
-        st.error(f"Error de conexión: {e}")
+        st.error(f"Error de conexión con la nube: {e}")
 
 # --- 4. INTERFAZ ---
 with st.sidebar:
@@ -95,4 +100,55 @@ st.divider()
 
 if modo == "Marcación":
     st.write("### DIGITE SU DNI:")
-    c_in, _ = st.columns
+    # CORRECCIÓN: Se añadieron los paréntesis () a st.columns
+    c_in, _ = st.columns([1, 4]) 
+    with c_in:
+        dni_in = st.text_input("DNI_INPUT", key=f"dni_{st.session_state.reset_key}", label_visibility="collapsed")
+    
+    if dni_in:
+        try:
+            df_emp = pd.read_csv("empleados.csv", dtype={'DNI': str})
+            emp = df_emp[df_emp['DNI'] == str(dni_in)]
+            if not emp.empty:
+                nombre = emp.iloc[0]['Nombre']
+                st.info(f"👤 TRABAJADOR: {nombre}")
+                estado = st.session_state.ultimo_estado.get(str(dni_in), "NADA")
+                
+                if estado == "SALIDA":
+                    st.warning("🚫 Turno finalizado hoy.")
+                else:
+                    c1, c2, c3, c4 = st.columns(4)
+                    with c1:
+                        if st.button("📥 INGRESO", disabled=(estado != "NADA"), use_container_width=True):
+                            registrar_en_nube(dni_in, nombre, "INGRESO")
+                    with c2:
+                        if st.button("🚶 PERMISO", disabled=(estado != "INGRESO" and estado != "RETORNO_PERMISO"), use_container_width=True):
+                            st.session_state.mostrar_obs = True
+                            st.rerun()
+                    with c3:
+                        if st.button("🔙 RETORNO", disabled=(estado != "SALIDA_PERMISO"), use_container_width=True):
+                            registrar_en_nube(dni_in, nombre, "RETORNO_PER_INGRESO")
+                    with c4:
+                        if st.button("📤 SALIDA", disabled=(estado == "NADA"), use_container_width=True):
+                            registrar_en_nube(dni_in, nombre, "SALIDA")
+
+                    if st.session_state.mostrar_obs:
+                        st.divider()
+                        motivo = st.text_input("MOTIVO DEL PERMISO:")
+                        if motivo: 
+                            registrar_en_nube(dni_in, nombre, "SALIDA_PERMISO", obs=motivo)
+            else: 
+                st.error("DNI no registrado.")
+        except Exception as e: 
+            st.error(f"Error base local: {e}")
+
+else: # --- REPORTE COMPLETO CON FILTROS ---
+    st.header("📋 Reporte Mensual Lobo")
+    try:
+        df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
+        if not df_h.empty:
+            # Autocorrección de columnas faltantes para registros viejos
+            if 'Descuento_Soles' not in df_h.columns: df_h['Descuento_Soles'] = 0.0
+            if 'Tardanza_Min' not in df_h.columns: df_h['Tardanza_Min'] = 0
+            
+            df_h['Fecha_dt'] = pd.to_datetime(df_h['Fecha'], errors='coerce
