@@ -12,7 +12,7 @@ st.set_page_config(page_title="Asistencia Lobo", layout="wide")
 def obtener_hora_peru():
     return datetime.now(timezone.utc) - timedelta(hours=5)
 
-# --- JAVASCRIPT PARA FOCO AUTOMÁTICO ---
+# Foco automático en la casilla de DNI
 components.html("""
     <script>
     function setFocus(){
@@ -56,18 +56,16 @@ def registrar_en_nube(dni, nombre, tipo, obs=""):
         if "200" in str(e):
             st.session_state.ultimo_estado[str(dni)] = tipo
             st.session_state.reset_key += 1
-            st.session_state.mostrar_obs = False
             st.rerun()
         else:
-            st.error(f"Error: {e}")
+            st.error(f"Error de conexión: {e}")
 
-# --- 4. INTERFAZ Y MENÚ ---
+# --- 4. INTERFAZ ---
 with st.sidebar:
     st.title("🐺 Gestión Lobo")
     modo = "Marcación"
     if st.checkbox("Acceso Administrador"):
-        clave = st.text_input("Clave:", type="password")
-        if clave == "Lobo2026":
+        if st.text_input("Clave:", type="password") == "Lobo2026":
             modo = "Historial"
 
 col1, col2 = st.columns([1, 4])
@@ -86,8 +84,8 @@ if modo == "Marcación":
     
     if dni_in:
         try:
-            df_emp = pd.read_csv("empleados.csv")
-            emp = df_emp[df_emp['DNI'].astype(str) == str(dni_in)]
+            df_emp = pd.read_csv("empleados.csv", dtype={'DNI': str})
+            emp = df_emp[df_emp['DNI'] == str(dni_in)]
             
             if not emp.empty:
                 nombre = emp.iloc[0]['Nombre']
@@ -95,7 +93,7 @@ if modo == "Marcación":
                 estado = st.session_state.ultimo_estado.get(str(dni_in), "NADA")
                 
                 if estado == "SALIDA":
-                    st.warning("🚫 Salida definitiva registrada hoy.")
+                    st.warning("🚫 Turno finalizado hoy.")
                 else:
                     c1, c2, c3, c4 = st.columns(4)
                     with c1:
@@ -116,48 +114,39 @@ if modo == "Marcación":
                         st.divider()
                         motivo = st.text_input("MOTIVO DEL PERMISO (Escriba y ENTER):")
                         if motivo:
-                            registrar_en_nube(dni_in, nombre, "SALIDA_PER_INGRESO", obs=motivo)
+                            registrar_en_nube(dni_in, nombre, "SALIDA_PERMISO", obs=motivo)
             else:
                 st.error("DNI no registrado.")
-        except:
-            st.error("Error base de datos local.")
+        except Exception:
+            st.error("Error al leer empleados.csv")
 
 else:
-    # --- MÓDULO ADMINISTRADOR CON FILTROS ---
+    # --- MÓDULO ADMIN PROTEGIDO ---
     st.header("📋 Reporte de Asistencia")
     try:
         df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
         
-        # Convertir columna Fecha a formato datetime para filtrar
-        df_h['Fecha_dt'] = pd.to_datetime(df_h['Fecha'])
-        
-        # Controles de filtro en columnas
-        f1, f2, f3 = st.columns([1, 1, 2])
-        with f1:
-            anios = sorted(df_h['Fecha_dt'].dt.year.unique(), reverse=True)
-            sel_anio = st.selectbox("Año", anios)
-        with f2:
-            meses_nombres = {1:"Enero", 2:"Febrero", 3:"Marzo", 4:"Abril", 5:"Mayo", 6:"Junio", 
-                             7:"Julio", 8:"Agosto", 9:"Septiembre", 10:"Octubre", 11:"Noviembre", 12:"Diciembre"}
-            meses_disp = sorted(df_h[df_h['Fecha_dt'].dt.year == sel_anio]['Fecha_dt'].dt.month.unique())
-            sel_mes = st.selectbox("Mes", meses_disp, format_func=lambda x: meses_nombres[x])
-        
-        # Aplicar Filtro
-        df_filtrado = df_h[(df_h['Fecha_dt'].dt.year == sel_anio) & (df_h['Fecha_dt'].dt.month == sel_mes)]
-        
-        # Quitar la columna auxiliar antes de mostrar y exportar
-        df_mostrar = df_filtrado.drop(columns=['Fecha_dt'])
-        
-        st.dataframe(df_mostrar, use_container_width=True)
-        
-        # Botón de Descarga
-        csv = df_mostrar.to_csv(index=False).encode('utf-8')
-        st.download_button(
-            label=f"📥 Descargar Reporte {meses_nombres[sel_mes]} {sel_anio}",
-            data=csv,
-            file_name=f"Asistencia_{meses_nombres[sel_mes]}_{sel_anio}.csv",
-            mime="text/csv",
-        )
-        
-    except Exception as e:
-        st.error(f"Error al cargar historial o filtros: {e}")
+        if not df_h.empty:
+            # Limpieza de fechas para evitar errores
+            df_h['Fecha_dt'] = pd.to_datetime(df_h['Fecha'], errors='coerce')
+            df_h = df_h.dropna(subset=['Fecha_dt'])
+            
+            f1, f2, _ = st.columns([1, 1, 2])
+            with f1:
+                anios = sorted(df_h['Fecha_dt'].dt.year.unique(), reverse=True)
+                sel_anio = st.selectbox("Año", anios if anios else [2026])
+            with f2:
+                meses_nombres = {1:"Enero", 2:"Febrero", 3:"Marzo", 4:"Abril", 5:"Mayo", 6:"Junio", 
+                                 7:"Julio", 8:"Agosto", 9:"Septiembre", 10:"Octubre", 11:"Noviembre", 12:"Diciembre"}
+                df_anio = df_h[df_h['Fecha_dt'].dt.year == sel_anio]
+                meses_disp = sorted(df_anio['Fecha_dt'].dt.month.unique())
+                sel_mes = st.selectbox("Mes", meses_disp if meses_disp else [2], format_func=lambda x: meses_nombres.get(x, "N/A"))
+            
+            df_filtrado = df_h[(df_h['Fecha_dt'].dt.year == sel_anio) & (df_h['Fecha_dt'].dt.month == sel_mes)]
+            df_mostrar = df_filtrado.drop(columns=['Fecha_dt'])
+            st.dataframe(df_mostrar, use_container_width=True)
+        else:
+            st.info("Aún no hay registros en la base de datos.")
+            
+    except Exception:
+        st.warning("⏳ Sincronizando datos con Google Drive...")
