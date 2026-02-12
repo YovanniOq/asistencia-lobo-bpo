@@ -16,14 +16,23 @@ HORA_ENTRADA_OFICIAL = "08:00:00"
 def obtener_hora_peru():
     return datetime.now(timezone.utc) - timedelta(hours=5)
 
-# Foco automático persistente
+# --- JAVASCRIPT DE FOCO INTELIGENTE ---
+# Solo fuerza el foco si el usuario NO está interactuando con otros inputs (como la clave)
 components.html("""
     <script>
     const forceFocus = () => {
         const inputs = window.parent.document.querySelectorAll('input[type="text"]');
+        const passInputs = window.parent.document.querySelectorAll('input[type="password"]');
+        
         if (inputs.length > 0) {
             const dniInput = inputs[0];
-            if (window.parent.document.activeElement !== dniInput) {
+            const activeElem = window.parent.document.activeElement;
+            
+            // Si el foco no está en el DNI Y tampoco está en la contraseña, lo regresamos al DNI
+            let focusingOnPassword = false;
+            passInputs.forEach(p => { if(activeElem === p) focusingOnPassword = true; });
+
+            if (activeElem !== dniInput && !focusingOnPassword) {
                 dniInput.focus();
             }
         }
@@ -80,11 +89,11 @@ with st.sidebar:
     st.title("🐺 Gestión Lobo")
     modo = "Marcación"
     if st.checkbox("Acceso Administrador"):
+        # Al ser tipo password, el JS ahora respetará este campo
         clave_admin = st.text_input("Clave:", type="password")
         if clave_admin == "Lobo2026":
             modo = "Historial"
 
-# CORRECCIÓN: Definición correcta de columnas para evitar NameError
 col1, col2 = st.columns([1, 4])
 with col1:
     if os.path.exists("logo_lobo.png"): 
@@ -96,7 +105,6 @@ st.divider()
 
 if modo == "Marcación":
     st.write("### DIGITE SU DNI:")
-    # CORRECCIÓN: Paréntesis añadidos a st.columns()
     c_in, _ = st.columns([1, 4])
     with c_in:
         dni_in = st.text_input("DNI_INPUT", key=f"dni_{st.session_state.reset_key}", label_visibility="collapsed")
@@ -143,7 +151,6 @@ else: # --- REPORTE SEGURO ---
     try:
         df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
         if not df_h.empty:
-            # PROTECCIÓN: Crea columnas si faltan en registros antiguos
             if 'Descuento_Soles' not in df_h.columns: df_h['Descuento_Soles'] = 0.0
             if 'Tardanza_Min' not in df_h.columns: df_h['Tardanza_Min'] = 0
             
@@ -174,4 +181,4 @@ else: # --- REPORTE SEGURO ---
         else:
             st.info("No hay registros en el historial.")
     except Exception as e:
-        st.warning(f"Sincronizando... {e}")
+        st.warning(f"Sincronizando con Drive... {e}")
