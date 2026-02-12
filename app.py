@@ -19,7 +19,9 @@ components.html("""
     <script>
     function setFocus(){
         var inputs = window.parent.document.querySelectorAll('input[type="text"]');
-        if(inputs.length > 0) { inputs[0].focus(); }
+        if(inputs.length > 0 && window.parent.document.activeElement.tagName !== 'INPUT') {
+            inputs[0].focus();
+        }
     }
     setInterval(setFocus, 500);
     </script>
@@ -48,7 +50,7 @@ st.divider()
 conn = st.connection("gsheets", type=GSheetsConnection)
 url_hoja = st.secrets["connections"]["gsheets"]["spreadsheet"]
 
-# --- 4. FUNCIÓN DE GUARDADO MEJORADA ---
+# --- 4. FUNCIÓN DE GUARDADO ---
 def registrar_seguimiento(dni, nombre, tipo, obs=""):
     try:
         ahora = obtener_hora_peru()
@@ -98,39 +100,37 @@ if modo == "Marcación":
                 nombre = emp.iloc[0]['Nombre']
                 st.info(f"👤 TRABAJADOR: {nombre}")
                 
-                # Intentar leer estado actual (Si falla, habilitamos todo)
-                try:
-                    df_nube = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
-                    hoy = obtener_hora_peru().strftime("%Y-%m-%d")
-                    marcs_hoy = df_nube[(df_nube['DNI'].astype(str) == str(dni)) & (df_nube['Fecha'] == hoy)]
-                    ultimo = marcs_hoy.iloc[-1]['Tipo'] if not marcs_hoy.empty else "NADA"
-                except:
-                    ultimo = "ERROR_CONEXION" # Si no puede leer, deja marcar
+                # --- VALIDACIÓN DE ESTADOS ---
+                df_nube = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
+                hoy = obtener_hora_peru().strftime("%Y-%m-%d")
+                marcs_hoy = df_nube[(df_nube['DNI'].astype(str) == str(dni)) & (df_nube['Fecha'] == hoy)]
+                
+                # ¿Ya marcó ingreso hoy?
+                ya_ingreso = not marcs_hoy[marcs_hoy['Tipo'] == "INGRESO"].empty
+                # ¿Ya marcó salida definitiva hoy?
+                ya_salio_final = not marcs_hoy[marcs_hoy['Tipo'] == "SALIDA"].empty
+                # Último movimiento
+                ultimo = marcs_hoy.iloc[-1]['Tipo'] if not marcs_hoy.empty else "NADA"
 
-                if ultimo == "SALIDA":
+                if ya_salio_final:
                     st.warning("🚫 Turno finalizado por hoy.")
-                    if st.button("Re-intentar Marcación"): # Botón de emergencia
-                         ultimo = "ERROR_CONEXION"
-                         st.rerun()
                 else:
                     b1, b2, b3, b4 = st.columns(4)
                     
-                    # LÓGICA FLEXIBLE DE BOTONES
-                    # Ingreso se deshabilita solo si ya hay un ingreso confirmado
-                    with b1:
-                        if st.button("📥 INGRESO", disabled=(ultimo in ["INGRESO", "RETORNO_PERMISO", "SALIDA_PERMISO"]), use_container_width=True):
+                    with b1: # INGRESO: Se bloquea si ya existe UN ingreso hoy
+                        if st.button("📥 INGRESO", disabled=ya_ingreso, use_container_width=True):
                             registrar_seguimiento(dni, nombre, "INGRESO")
                     
-                    with b2:
-                        if st.button("🚶 PERMISO", disabled=(ultimo == "SALIDA_PERMISO"), use_container_width=True):
+                    with b2: # PERMISO: Solo si ya ingresó y no está ya en un permiso
+                        if st.button("🚶 PERMISO", disabled=(not ya_ingreso or ultimo == "SALIDA_PERMISO"), use_container_width=True):
                             st.session_state.esperando_motivo = True
                     
-                    with b3:
-                        if st.button("🔙 RETORNO", disabled=(ultimo != "SALIDA_PERMISO" and ultimo != "ERROR_CONEXION"), use_container_width=True):
+                    with b3: # RETORNO: Solo si el último estado es permiso
+                        if st.button("🔙 RETORNO", disabled=(ultimo != "SALIDA_PERMISO"), use_container_width=True):
                             registrar_seguimiento(dni, nombre, "RETORNO_PERMISO")
                     
-                    with b4:
-                        if st.button("📤 SALIDA", use_container_width=True):
+                    with b4: # SALIDA: Solo si ya ingresó
+                        if st.button("📤 SALIDA", disabled=(not ya_ingreso), use_container_width=True):
                             registrar_seguimiento(dni, nombre, "SALIDA")
 
                     if st.session_state.esperando_motivo:
