@@ -12,16 +12,14 @@ LOGO_ARCHIVO = "logo_lobo.png"
 def obtener_hora_peru():
     return datetime.now(timezone.utc) - timedelta(hours=5)
 
-# --- 2. INTERFAZ Y FOCO AUTOMÁTICO ---
+# --- 2. INTERFAZ Y FOCO ---
 st.set_page_config(page_title="Asistencia Lobo", layout="wide")
 
 components.html("""
     <script>
     function setFocus(){
         var inputs = window.parent.document.querySelectorAll('input[type="text"]');
-        if(inputs.length > 0 && window.parent.document.activeElement.tagName !== 'INPUT') {
-            inputs[0].focus();
-        }
+        if(inputs.length > 0) { inputs[0].focus(); }
     }
     setInterval(setFocus, 500);
     </script>
@@ -43,7 +41,6 @@ with col_logo:
         st.image(LOGO_ARCHIVO, width=180)
 with col_titulo:
     st.markdown("<h1 style='color: #1E3A8A; font-size: 38px; margin-top: 15px;'>SR. LOBO BPO SOLUTIONS</h1>", unsafe_allow_html=True)
-    st.write(f"🕒 Hora: **{obtener_hora_peru().strftime('%H:%M:%S')}**")
 
 st.divider()
 
@@ -51,7 +48,7 @@ st.divider()
 conn = st.connection("gsheets", type=GSheetsConnection)
 url_hoja = st.secrets["connections"]["gsheets"]["spreadsheet"]
 
-# --- 4. FUNCIÓN DE GUARDADO (IGNORA EL FALSO ERROR) ---
+# --- 4. FUNCIÓN DE GUARDADO MEJORADA ---
 def registrar_seguimiento(dni, nombre, tipo, obs=""):
     try:
         ahora = obtener_hora_peru()
@@ -60,11 +57,8 @@ def registrar_seguimiento(dni, nombre, tipo, obs=""):
             "Hora": ahora.strftime("%H:%M:%S"), "Tipo": tipo, "Observacion": obs, "Tardanza_Min": 0
         }])
         
-        # Leemos el estado actual
         df_actual = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
         df_final = pd.concat([df_actual, nueva_fila], ignore_index=True)
-        
-        # Intentamos subir
         conn.update(spreadsheet=url_hoja, worksheet="Sheet1", data=df_final)
         
         st.balloons()
@@ -75,16 +69,15 @@ def registrar_seguimiento(dni, nombre, tipo, obs=""):
         st.rerun()
 
     except Exception as e:
-        # SI EL ERROR CONTIENE 200, ES UN ÉXITO DISFRAZADO
         if "200" in str(e) or "OK" in str(e):
             st.balloons()
-            st.success(f"✅ {tipo} registrado exitosamente.")
+            st.success(f"✅ {tipo} guardado correctamente.")
             time.sleep(2)
             st.session_state.reset_key += 1
             st.session_state.esperando_motivo = False
             st.rerun()
         else:
-            st.error(f"Fallo real: {e}")
+            st.error(f"Fallo al registrar: {e}")
 
 # --- 5. LÓGICA DE MARCACIÓN ---
 if modo == "Marcación":
@@ -105,36 +98,39 @@ if modo == "Marcación":
                 nombre = emp.iloc[0]['Nombre']
                 st.info(f"👤 TRABAJADOR: {nombre}")
                 
-                # Bloque de lectura para flujo de botones (con captura de error 200)
+                # Intentar leer estado actual (Si falla, habilitamos todo)
                 try:
                     df_nube = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
-                except Exception as e:
-                    if "200" in str(e):
-                        # Si da error 200 al leer, usamos un DF vacío para no trabar el sistema
-                        df_nube = pd.DataFrame(columns=["DNI", "Fecha", "Tipo"])
-                    else:
-                        st.error("Error al conectar con la nube.")
-                        st.stop()
-
-                hoy = obtener_hora_peru().strftime("%Y-%m-%d")
-                marcs_hoy = df_nube[(df_nube['DNI'].astype(str) == str(dni)) & (df_nube['Fecha'] == hoy)]
-                ultimo = marcs_hoy.iloc[-1]['Tipo'] if not marcs_hoy.empty else "NADA"
+                    hoy = obtener_hora_peru().strftime("%Y-%m-%d")
+                    marcs_hoy = df_nube[(df_nube['DNI'].astype(str) == str(dni)) & (df_nube['Fecha'] == hoy)]
+                    ultimo = marcs_hoy.iloc[-1]['Tipo'] if not marcs_hoy.empty else "NADA"
+                except:
+                    ultimo = "ERROR_CONEXION" # Si no puede leer, deja marcar
 
                 if ultimo == "SALIDA":
-                    st.warning("🚫 Turno completado por hoy.")
+                    st.warning("🚫 Turno finalizado por hoy.")
+                    if st.button("Re-intentar Marcación"): # Botón de emergencia
+                         ultimo = "ERROR_CONEXION"
+                         st.rerun()
                 else:
                     b1, b2, b3, b4 = st.columns(4)
+                    
+                    # LÓGICA FLEXIBLE DE BOTONES
+                    # Ingreso se deshabilita solo si ya hay un ingreso confirmado
                     with b1:
-                        if st.button("📥 INGRESO", disabled=(ultimo != "NADA"), use_container_width=True):
+                        if st.button("📥 INGRESO", disabled=(ultimo in ["INGRESO", "RETORNO_PERMISO", "SALIDA_PERMISO"]), use_container_width=True):
                             registrar_seguimiento(dni, nombre, "INGRESO")
+                    
                     with b2:
-                        if st.button("🚶 PERMISO", disabled=(ultimo not in ["INGRESO", "RETORNO_PERMISO"]), use_container_width=True):
+                        if st.button("🚶 PERMISO", disabled=(ultimo == "SALIDA_PERMISO"), use_container_width=True):
                             st.session_state.esperando_motivo = True
+                    
                     with b3:
-                        if st.button("🔙 RETORNO", disabled=(ultimo != "SALIDA_PERMISO"), use_container_width=True):
+                        if st.button("🔙 RETORNO", disabled=(ultimo != "SALIDA_PERMISO" and ultimo != "ERROR_CONEXION"), use_container_width=True):
                             registrar_seguimiento(dni, nombre, "RETORNO_PERMISO")
+                    
                     with b4:
-                        if st.button("📤 SALIDA", disabled=(ultimo not in ["INGRESO", "RETORNO_PERMISO"]), use_container_width=True):
+                        if st.button("📤 SALIDA", use_container_width=True):
                             registrar_seguimiento(dni, nombre, "SALIDA")
 
                     if st.session_state.esperando_motivo:
