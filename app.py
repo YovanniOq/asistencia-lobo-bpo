@@ -6,15 +6,14 @@ import os
 import time
 import streamlit.components.v1 as components
 
-# --- 1. CONFIGURACIÓN ---
+# --- 1. CONFIGURACIÓN ESTABLE ---
 LOGO_ARCHIVO = "logo_lobo.png"
 def obtener_hora_peru():
     return datetime.now(timezone.utc) - timedelta(hours=5)
 
-# --- 2. CONFIGURACIÓN DE PÁGINA ---
+# --- 2. CONFIGURACIÓN DE PÁGINA Y FOCO ---
 st.set_page_config(page_title="Asistencia Lobo", layout="wide")
 
-# Script de Foco Automático
 components.html("""
     <script>
     function setFocus(){
@@ -36,7 +35,7 @@ if "mostrar_obs" not in st.session_state: st.session_state.mostrar_obs = False
 if "ultimo_dni" not in st.session_state: st.session_state.ultimo_dni = ""
 if "estado_local" not in st.session_state: st.session_state.estado_local = "NADA"
 
-# --- 4. FUNCIÓN DE GUARDADO ---
+# --- 4. FUNCIÓN DE GUARDADO (NO SE TOCA LO QUE FUNCIONA) ---
 def registrar_dato(dni, nombre, tipo, obs=""):
     try:
         ahora = obtener_hora_peru()
@@ -53,7 +52,6 @@ def registrar_dato(dni, nombre, tipo, obs=""):
         st.balloons()
         time.sleep(1)
         
-        # Limpieza total para el siguiente trabajador
         st.session_state.estado_local = tipo
         st.session_state.ultimo_dni = dni
         st.session_state.reset_key += 1
@@ -70,14 +68,16 @@ def registrar_dato(dni, nombre, tipo, obs=""):
         else:
             st.error(f"Error: {e}")
 
-# --- 5. MENÚ LATERAL ---
+# --- 5. MENÚ LATERAL (CON PANEL DE ADMINISTRADOR) ---
 with st.sidebar:
-    st.title("Panel Administrativo")
+    st.title("🐺 Panel Administrativo")
     modo = "Marcación"
     if st.checkbox("Acceso Administrador"):
         clave = st.text_input("Contraseña:", type="password")
         if clave == "Lobo2026":
             modo = st.radio("Módulo:", ["Marcación", "Historial Completo"])
+        elif clave != "":
+            st.error("Clave incorrecta")
 
 # --- 6. DISEÑO PRINCIPAL ---
 col_logo, col_titulo = st.columns([1, 4])
@@ -104,7 +104,6 @@ if modo == "Marcación":
                 nombre = emp.iloc[0]['Nombre']
                 st.info(f"👤 TRABAJADOR: {nombre}")
                 
-                # Sincronización de estado (Memoria local prioritaria)
                 try:
                     df_cloud = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
                     hoy = obtener_hora_peru().strftime("%Y-%m-%d")
@@ -129,25 +128,20 @@ if modo == "Marcación":
                     with col1:
                         if st.button("📥 INGRESO", disabled=ya_ingreso, use_container_width=True):
                             registrar_dato(dni_input, nombre, "INGRESO")
-                    
                     with col2:
-                        # Al presionar este botón, forzamos el refresco para mostrar el input
                         if st.button("🚶 PERMISO", disabled=(not ya_ingreso or ultimo_estado == "SALIDA_PERMISO"), use_container_width=True):
                             st.session_state.mostrar_obs = True
-                            st.rerun() # ESTE ES EL REFRESCO QUE FALTABA
-                    
+                            st.rerun()
                     with col3:
                         if st.button("🔙 RETORNO", disabled=(ultimo_estado != "SALIDA_PERMISO"), use_container_width=True):
                             registrar_dato(dni_input, nombre, "RETORNO_PERMISO")
-                    
                     with col4:
                         if st.button("📤 SALIDA", disabled=not ya_ingreso, use_container_width=True):
                             registrar_dato(dni_input, nombre, "SALIDA")
 
-                    # MOSTRAR CAMPO DE MOTIVO SI SE ACTIVÓ EL BOTÓN
                     if st.session_state.mostrar_obs:
                         st.divider()
-                        motivo = st.text_input("MOTIVO DEL PERMISO (Escriba y presione ENTER):", key="motivo_input")
+                        motivo = st.text_input("MOTIVO DEL PERMISO (Escriba y ENTER):")
                         if motivo:
                             registrar_dato(dni_input, nombre, "SALIDA_PERMISO", obs=motivo)
             else:
@@ -155,6 +149,16 @@ if modo == "Marcación":
         except Exception as e:
             st.error(f"Error: {e}")
 
+# --- 8. HISTORIAL (ESTA ES LA PARTE QUE NO CARGABA) ---
 elif modo == "Historial Completo":
     st.header("📋 Historial de Asistencia")
-    st.dataframe(conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0), use_container_width=True)
+    try:
+        # Intentamos leer la hoja
+        df_historial = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
+        if df_historial is not None:
+            st.dataframe(df_historial, use_container_width=True)
+            # Botón para descargar
+            csv = df_historial.to_csv(index=False).encode('utf-8')
+            st.download_button("📥 Descargar Excel (CSV)", data=csv, file_name="historial_asistencia.csv", mime="text/csv")
+    except Exception as e:
+        st.error(f"⚠️ No se pudo cargar el historial. Verifica que la pestaña en Drive se llame 'Sheet1'. Error: {e}")
