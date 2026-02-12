@@ -12,7 +12,7 @@ st.set_page_config(page_title="Asistencia Lobo", layout="wide")
 def obtener_hora_peru():
     return datetime.now(timezone.utc) - timedelta(hours=5)
 
-# Foco automático
+# Foco automático en la caja de DNI
 components.html("<script>setInterval(function(){var inputs = window.parent.document.querySelectorAll('input'); if(inputs.length > 0 && window.parent.document.activeElement.tagName !== 'INPUT') inputs[0].focus();}, 500);</script>", height=0)
 
 # --- 2. CONEXIÓN ---
@@ -37,7 +37,7 @@ def registrar_en_nube(dni, nombre, tipo, obs=""):
         conn.update(spreadsheet=url_hoja, worksheet="Sheet1", data=df_final)
         
         st.session_state.ultimo_estado[str(dni)] = tipo
-        st.success(f"✅ {tipo} REGISTRADO")
+        st.success(f"✅ {tipo} REGISTRADO CORRECTAMENTE")
         st.balloons()
         time.sleep(1.5)
         st.session_state.reset_key += 1
@@ -50,9 +50,9 @@ def registrar_en_nube(dni, nombre, tipo, obs=""):
             st.session_state.mostrar_obs = False
             st.rerun()
         else:
-            st.error(f"Error: {e}")
+            st.error(f"Error de conexión: {e}")
 
-# --- 4. INTERFAZ ---
+# --- 4. MENÚ LATERAL ---
 with st.sidebar:
     st.title("🐺 Panel Admin")
     modo = "Marcación"
@@ -60,29 +60,43 @@ with st.sidebar:
         if st.text_input("Clave:", type="password") == "Lobo2026":
             modo = "Historial"
 
+# --- 5. LOGO Y DISEÑO ---
 col1, col2 = st.columns([1, 4])
 with col1:
-    if os.path.exists("logo_lobo.png"): st.image("logo_lobo.png", width=150)
+    if os.path.exists("logo_lobo.png"): 
+        st.image("logo_lobo.png", width=150)
+    else:
+        st.write("🐺")
 with col2:
     st.markdown("<h1 style='color: #1E3A8A;'>SR. LOBO BPO SOLUTIONS</h1>", unsafe_allow_html=True)
+    st.write(f"🕒 Hora Actual: {obtener_hora_peru().strftime('%H:%M:%S')}")
 
 st.divider()
 
+# --- 6. LÓGICA DE NEGOCIO ---
 if modo == "Marcación":
-    dni_in = st.text_input("DIGITE SU DNI:", key=f"dni_{st.session_state.reset_key}")
+    dni_in = st.text_input("DIGITE SU DNI Y PRESIONE ENTER:", key=f"dni_{st.session_state.reset_key}")
     
     if dni_in:
-        df_emp = pd.read_csv("empleados.csv")
-        emp = df_emp[df_emp['DNI'].astype(str) == str(dni_in)]
-        
-        if not emp.empty:
-            nombre = emp.iloc[0]['Nombre']
-            st.info(f"👤 TRABAJADOR: {nombre}")
+        try:
+            df_emp = pd.read_csv("empleados.csv")
+            emp = df_emp[df_emp['DNI'].astype(str) == str(dni_in)]
             
-            estado = st.session_state.ultimo_estado.get(str(dni_in), "NADA")
-            
-            if estado == "SALIDA":
-                st.warning("🚫 Ya registraste tu salida final.")
-            else:
-                # CREACIÓN DE 4 COLUMNAS (Para que aparezca Salida)
-                c1, c2, c3, c4 = st.columns(
+            if not emp.empty:
+                nombre = emp.iloc[0]['Nombre']
+                st.info(f"👤 TRABAJADOR: {nombre}")
+                
+                estado = st.session_state.ultimo_estado.get(str(dni_in), "NADA")
+                
+                if estado == "SALIDA":
+                    st.warning("🚫 Ya registraste tu salida definitiva por hoy.")
+                else:
+                    # CORRECCIÓN DE LA LÍNEA 88: Paréntesis cerrado correctamente
+                    c1, c2, c3, c4 = st.columns(4)
+                    
+                    with c1:
+                        if st.button("📥 INGRESO", disabled=(estado != "NADA"), use_container_width=True):
+                            registrar_en_nube(dni_in, nombre, "INGRESO")
+                    
+                    with c2:
+                        if st.button("🚶 PERMISO", disabled=(estado != "INGRESO" and estado != "RETORNO_PERMISO"),
