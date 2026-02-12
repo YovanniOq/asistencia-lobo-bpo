@@ -91,7 +91,7 @@ if modo == "Marcación":
                 if estado == "SALIDA":
                     st.warning("🚫 Ya registraste tu salida definitiva por hoy.")
                 else:
-                    # CORRECCIÓN DE LA LÍNEA 88: Paréntesis cerrado correctamente
+                    # REPARACIÓN LÍNEA 88: Paréntesis cerrado
                     c1, c2, c3, c4 = st.columns(4)
                     
                     with c1:
@@ -99,4 +99,33 @@ if modo == "Marcación":
                             registrar_en_nube(dni_in, nombre, "INGRESO")
                     
                     with c2:
-                        if st.button("🚶 PERMISO", disabled=(estado != "INGRESO" and estado != "RETORNO_PERMISO"),
+                        # REPARACIÓN LÍNEA 102: Paréntesis cerrado
+                        if st.button("🚶 PERMISO", disabled=(estado != "INGRESO" and estado != "RETORNO_PERMISO"), use_container_width=True):
+                            st.session_state.mostrar_obs = True
+                            st.rerun()
+                    
+                    with c3:
+                        if st.button("🔙 RETORNO", disabled=(estado != "SALIDA_PERMISO"), use_container_width=True):
+                            registrar_en_nube(dni_in, nombre, "RETORNO_PERMISO")
+                    
+                    with c4:
+                        if st.button("📤 SALIDA", disabled=(estado == "NADA"), use_container_width=True):
+                            registrar_en_nube(dni_in, nombre, "SALIDA")
+
+                    if st.session_state.mostrar_obs:
+                        st.divider()
+                        motivo = st.text_input("MOTIVO DEL PERMISO (Escriba y ENTER):")
+                        if motivo:
+                            registrar_en_nube(dni_in, nombre, "SALIDA_PERMISO", obs=motivo)
+            else:
+                st.error("DNI no registrado.")
+        except Exception as e:
+            st.error(f"Error: {e}")
+
+else: # MODO HISTORIAL
+    st.header("📋 Reporte de Asistencia")
+    try:
+        df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
+        st.dataframe(df_h, use_container_width=True)
+    except:
+        st.warning("⏳ Sincronizando con Google Drive...")
