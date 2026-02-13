@@ -14,7 +14,7 @@ HORA_ENTRADA_OFICIAL = "08:00:00"
 def obtener_hora_peru():
     return datetime.now(timezone.utc) - timedelta(hours=5)
 
-# Foco automático inteligente (Respeta el campo de contraseña)
+# Foco automático inteligente
 components.html("""
     <script>
     const forceFocus = () => {
@@ -38,7 +38,7 @@ components.html("""
 conn = st.connection("gsheets", type=GSheetsConnection)
 url_hoja = st.secrets["connections"]["gsheets"]["spreadsheet"]
 
-# Memoria local para bloqueo inmediato
+# Memoria local para bloqueo inmediato de botones
 if "registro_local" not in st.session_state:
     st.session_state.registro_local = {}
 if "reset_key" not in st.session_state: st.session_state.reset_key = 0
@@ -64,15 +64,15 @@ def registrar_en_nube(dni, nombre, tipo, obs=""):
             "Tardanza_Min": tardanza_min, "Descuento_Soles": descuento
         }])
         
-        # Leemos y actualizamos el Drive
+        # Guardado en Google Sheets
         df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
         df_final = pd.concat([df_h, nueva_fila], ignore_index=True)
         conn.update(spreadsheet=url_hoja, worksheet="Sheet1", data=df_final)
         
-        # Guardar en memoria local para que el cambio sea instantáneo
+        # ACTUALIZACIÓN LOCAL (Para que el botón se bloquee YA)
         st.session_state.registro_local[str(dni)] = tipo
         
-        st.success(f"✅ {tipo} REGISTRADO CORRECTAMENTE")
+        st.success(f"✅ {tipo} REGISTRADO")
         time.sleep(1)
         st.session_state.reset_key += 1
         st.session_state.mostrar_obs = False
@@ -85,15 +85,14 @@ with st.sidebar:
     st.title("🐺 Gestión Lobo")
     modo = "Marcación"
     if st.checkbox("Acceso Administrador"):
-        clave = st.text_input("Clave:", type="password")
-        if clave == "Lobo2026":
+        if st.text_input("Clave:", type="password") == "Lobo2026":
             modo = "Historial"
 
 col1, col2 = st.columns([1, 4])
 with col1:
     if os.path.exists("logo_lobo.png"): st.image("logo_lobo.png", width=150)
 with col2:
-    st.markdown("<h1 style='color: #1E3A8A;'>SR. Lobo BPO SOLUTIONS</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='color: #1E3A8A;'>SR. LOBO BPO SOLUTIONS</h1>", unsafe_allow_html=True)
 
 st.divider()
 
@@ -105,75 +104,4 @@ if modo == "Marcación":
     
     if dni_in:
         try:
-            df_emp = pd.read_csv("empleados.csv", dtype={'DNI': str})
-            emp = df_emp[df_emp['DNI'] == str(dni_in)]
-            
-            if not emp.empty:
-                nombre = emp.iloc[0]['Nombre']
-                st.info(f"👤 TRABAJADOR: {nombre}")
-                
-                # Obtener estado actual (Drive + Local)
-                df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
-                hoy = obtener_hora_peru().strftime("%Y-%m-%d")
-                regs_hoy = df_h[(df_h['DNI'].astype(str) == str(dni_in)) & (df_h['Fecha'] == hoy)]
-                
-                # Prioridad a lo que acaba de pasar localmente
-                u_tipo = st.session_state.registro_local.get(str(dni_in), "NADA")
-                if not regs_hoy.empty:
-                    u_tipo = regs_hoy.iloc[-1]['Tipo']
-
-                # Lógica de Botones
-                c1, c2, c3, c4 = st.columns(4)
-                with c1:
-                    if st.button("📥 INGRESO", use_container_width=True, disabled=(u_tipo != "NADA")):
-                        registrar_en_nube(dni_in, nombre, "INGRESO")
-                with c2:
-                    ok_per = (u_tipo in ["INGRESO", "RETORNO_PERMISO"])
-                    if st.button("🚶 PERMISO", use_container_width=True, disabled=not ok_per):
-                        st.session_state.mostrar_obs = True
-                        st.rerun()
-                with c3:
-                    ok_ret = (u_tipo == "SALIDA_PERMISO")
-                    if st.button("🔙 RETORNO", use_container_width=True, disabled=not ok_ret):
-                        registrar_en_nube(dni_in, nombre, "RETORNO_PERMISO")
-                with c4:
-                    if st.button("📤 SALIDA", use_container_width=True, disabled=not ok_per):
-                        registrar_en_nube(dni_in, nombre, "SALIDA")
-
-                if u_tipo == "SALIDA":
-                    st.warning("Marcación de SALIDA detectada. Jornada terminada.")
-
-                if st.session_state.mostrar_obs:
-                    st.divider()
-                    motivo = st.text_input("MOTIVO DEL PERMISO:")
-                    if motivo: registrar_en_nube(dni_in, nombre, "SALIDA_PERMISO", obs=motivo)
-            else:
-                st.error("DNI no registrado.")
-        except:
-            st.error("Error base de datos local.")
-else:
-    # --- MÓDULO ADMIN SEGURO ---
-    st.header("📋 Reporte Mensual Lobo")
-    try:
-        df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
-        if not df_h.empty:
-            if 'Descuento_Soles' not in df_h.columns: df_h['Descuento_Soles'] = 0.0
-            df_h['Fecha_dt'] = pd.to_datetime(df_h['Fecha'], errors='coerce')
-            df_h = df_h.dropna(subset=['Fecha_dt'])
-            
-            meses_dict = {1:"Enero", 2:"Febrero", 3:"Marzo", 4:"Abril", 5:"Mayo", 6:"Junio", 
-                          7:"Julio", 8:"Agosto", 9:"Septiembre", 10:"Octubre", 11:"Noviembre", 12:"Diciembre"}
-            
-            f1, f2, _ = st.columns([1, 1, 2])
-            with f1:
-                anios = sorted(df_h['Fecha_dt'].dt.year.unique(), reverse=True)
-                sel_anio = st.selectbox("Año", anios if anios else [2026])
-            with f2:
-                m_num = sorted(df_h[df_h['Fecha_dt'].dt.year == sel_anio]['Fecha_dt'].dt.month.unique())
-                sel_m = st.selectbox("Mes", m_num, format_func=lambda x: meses_dict.get(x, x))
-            
-            df_f = df_h[(df_h['Fecha_dt'].dt.year == sel_anio) & (df_h['Fecha_dt'].dt.month == sel_m)]
-            st.dataframe(df_f.drop(columns=['Fecha_dt']), use_container_width=True)
-            st.metric("Total Descuentos", f"S/ {df_f['Descuento_Soles'].sum():.2f}")
-    except Exception as e:
-        st.warning(f"Sincronizando... {e}")
+            df_emp = pd.read_
