@@ -14,14 +14,12 @@ HORA_ENTRADA_OFICIAL = "08:00:00"
 def obtener_hora_peru():
     return datetime.now(timezone.utc) - timedelta(hours=5)
 
-# Foco inteligente: No interrumpe si hay más de una caja de texto (Observaciones)
+# Foco inteligente: Solo al campo DNI si no hay otros inputs
 components.html("""
     <script>
     const forceFocus = () => {
         const inputs = window.parent.document.querySelectorAll('input[type="text"]');
-        if (inputs.length === 1) { 
-            inputs[0].focus();
-        }
+        if (inputs.length === 1) { inputs[0].focus(); }
     };
     setInterval(forceFocus, 1000);
     </script>
@@ -49,12 +47,16 @@ def registrar_en_nube(dni, nombre, tipo, obs=""):
                 descuento = round(tardanza_min * COSTO_MINUTO, 2)
 
         nueva_fila = pd.DataFrame([{
-            "DNI": str(dni), "Nombre": nombre, "Fecha": ahora.strftime("%Y-%m-%d"),
-            "Hora": ahora.strftime("%H:%M:%S"), "Tipo": tipo, "Observacion": obs, 
-            "Tardanza_Min": tardanza_min, "Descuento_Soles": descuento
+            "DNI": str(dni).strip(), 
+            "Nombre": nombre, 
+            "Fecha": ahora.strftime("%Y-%m-%d"),
+            "Hora": ahora.strftime("%H:%M:%S"), 
+            "Tipo": tipo, 
+            "Observacion": obs, 
+            "Tardanza_Min": tardanza_min, 
+            "Descuento_Soles": descuento
         }])
         
-        # LIMPIEZA TOTAL DE CACHÉ ANTES DE ESCRIBIR
         st.cache_data.clear()
         df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
         df_final = pd.concat([df_h, nueva_fila], ignore_index=True)
@@ -66,14 +68,14 @@ def registrar_en_nube(dni, nombre, tipo, obs=""):
         st.session_state.mostrar_obs = False
         st.rerun()
     except Exception as e:
-        st.error(f"Error de conexión: {e}")
+        st.error(f"Error al grabar: {e}")
 
 # --- 4. INTERFAZ ---
 with st.sidebar:
     st.title("🐺 Gestión Lobo")
-    if st.checkbox("Acceso Administrador"):
+    if st.checkbox("Admin"):
         if st.text_input("Clave:", type="password") == "Lobo2026":
-            st.info("Modo Admin: Ver historial abajo.")
+            st.info("Acceso Historial habilitado")
 
 col1, col2 = st.columns([1, 4])
 with col1:
@@ -83,42 +85,37 @@ with col2:
 
 st.divider()
 
-if "modo_admin" not in st.session_state: st.session_state.modo_admin = False
-
-# --- LÓGICA DE MARCACIÓN ---
 st.write("### DIGITE SU DNI:")
-c_dni, _ = st.columns([1, 3]) # Controlamos que la caja no sea gigante
+# --- CASILLA DE 12 CARACTERES APROX ---
+c_dni, _ = st.columns([1, 5]) 
 with c_dni:
-    dni_in = st.text_input("DNI_INPUT", key=f"dni_{st.session_state.reset_key}", label_visibility="collapsed")
+    dni_in = st.text_input("DNI", key=f"dni_{st.session_state.reset_key}", label_visibility="collapsed", max_chars=12)
 
 if dni_in:
-    # CADA VEZ QUE SE ESCRIBE UN DNI, BORRAMOS LA MEMORIA DE LA APP
     st.cache_data.clear()
-    
     try:
         df_emp = pd.read_csv("empleados.csv", dtype={'DNI': str})
-        emp = df_emp[df_emp['DNI'] == str(dni_in)]
+        emp = df_emp[df_emp['DNI'] == str(dni_in).strip()]
         
         if not emp.empty:
             nombre = emp.iloc[0]['Nombre']
             st.info(f"👤 TRABAJADOR: {nombre}")
             
-            # CONSULTA REAL A LA NUBE (ttl=0 significa "no guardes nada en memoria")
+            # --- CONSULTA DRIVE ---
             df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
             hoy = obtener_hora_peru().strftime("%Y-%m-%d")
             
-            # Buscamos el último movimiento de este DNI hoy
-            df_h['DNI'] = df_h['DNI'].astype(str)
-            regs = df_h[(df_h['DNI'] == str(dni_in)) & (df_h['Fecha'] == hoy)]
+            # NORMALIZACIÓN CRÍTICA: Convertimos todo el historial de DNI a texto y quitamos espacios
+            df_h['DNI'] = df_h['DNI'].astype(str).str.strip()
+            regs = df_h[(df_h['DNI'] == str(dni_in).strip()) & (df_h['Fecha'] == hoy)]
             
             u_tipo = "NADA"
             if not regs.empty:
                 u_tipo = str(regs.iloc[-1]['Tipo']).strip().upper()
 
-            # BOTONES
+            # --- BOTONES ---
             c1, c2, c3, c4 = st.columns(4)
             with c1:
-                # Solo habilitado si no ha marcado nada hoy
                 if st.button("📥 INGRESO", use_container_width=True, disabled=(u_tipo != "NADA")):
                     registrar_en_nube(dni_in, nombre, "INGRESO")
             
@@ -139,7 +136,7 @@ if dni_in:
 
             if st.session_state.mostrar_obs:
                 st.divider()
-                motivo = st.text_input("ESCRIBA EL MOTIVO DEL PERMISO:")
+                motivo = st.text_input("MOTIVO DEL PERMISO (PRESIONE ENTER):")
                 if motivo: registrar_en_nube(dni_in, nombre, "SALIDA_PERMISO", obs=motivo)
         else:
             st.error("DNI no registrado.")
