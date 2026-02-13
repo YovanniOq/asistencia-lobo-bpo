@@ -14,7 +14,7 @@ HORA_ENTRADA_OFICIAL = "08:00:00"
 def obtener_hora_peru():
     return datetime.now(timezone.utc) - timedelta(hours=5)
 
-# Foco inteligente: Solo al campo DNI si no hay otros inputs
+# Foco inteligente: No salta si hay más de una caja (para observaciones)
 components.html("""
     <script>
     const forceFocus = () => {
@@ -57,7 +57,7 @@ def registrar_en_nube(dni, nombre, tipo, obs=""):
             "Descuento_Soles": descuento
         }])
         
-        st.cache_data.clear()
+        st.cache_data.clear() # Limpiar caché para lectura fresca
         df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
         df_final = pd.concat([df_h, nueva_fila], ignore_index=True)
         conn.update(spreadsheet=url_hoja, worksheet="Sheet1", data=df_final)
@@ -75,21 +75,21 @@ with st.sidebar:
     st.title("🐺 Gestión Lobo")
     if st.checkbox("Admin"):
         if st.text_input("Clave:", type="password") == "Lobo2026":
-            st.info("Acceso Historial habilitado")
+            st.info("Panel de Historial activado")
 
 col1, col2 = st.columns([1, 4])
 with col1:
     if os.path.exists("logo_lobo.png"): st.image("logo_lobo.png", width=120)
 with col2:
-    st.markdown("<h1 style='color: #1E3A8A;'>SR. LOBO BPO SOLUTIONS</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='color: #1E3A8A; margin-bottom: 0;'>SR. LOBO BPO SOLUTIONS</h1>", unsafe_allow_html=True)
 
 st.divider()
 
 st.write("### DIGITE SU DNI:")
-# --- CASILLA DE 12 CARACTERES APROX ---
-c_dni, _ = st.columns([1, 5]) 
-with c_dni:
-    dni_in = st.text_input("DNI", key=f"dni_{st.session_state.reset_key}", label_visibility="collapsed", max_chars=12)
+# --- CAJA DE DNI LIMITADA A 12 CARACTERES Y TAMAÑO CORTO ---
+col_caja, _ = st.columns([1, 4])
+with col_caja:
+    dni_in = st.text_input("DNI_BOX", key=f"dni_{st.session_state.reset_key}", label_visibility="collapsed", max_chars=12)
 
 if dni_in:
     st.cache_data.clear()
@@ -101,25 +101,30 @@ if dni_in:
             nombre = emp.iloc[0]['Nombre']
             st.info(f"👤 TRABAJADOR: {nombre}")
             
-            # --- CONSULTA DRIVE ---
+            # --- LECTURA DE NUBE CON CONVERSIÓN FORZADA ---
             df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
             hoy = obtener_hora_peru().strftime("%Y-%m-%d")
             
-            # NORMALIZACIÓN CRÍTICA: Convertimos todo el historial de DNI a texto y quitamos espacios
-            df_h['DNI'] = df_h['DNI'].astype(str).str.strip()
+            # Convertimos DNI en el historial a TEXTO y quitamos decimales (.0) si existen
+            df_h['DNI'] = df_h['DNI'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+            
+            # Filtramos registros de hoy para este DNI
             regs = df_h[(df_h['DNI'] == str(dni_in).strip()) & (df_h['Fecha'] == hoy)]
             
             u_tipo = "NADA"
             if not regs.empty:
                 u_tipo = str(regs.iloc[-1]['Tipo']).strip().upper()
 
-            # --- BOTONES ---
+            # --- LÓGICA DE BOTONES ---
             c1, c2, c3, c4 = st.columns(4)
+            
             with c1:
+                # Se bloquea INGRESO si ya existe registro hoy
                 if st.button("📥 INGRESO", use_container_width=True, disabled=(u_tipo != "NADA")):
                     registrar_en_nube(dni_in, nombre, "INGRESO")
             
             esta_dentro = (u_tipo == "INGRESO" or u_tipo == "RETORNO_PERMISO")
+            
             with c2:
                 if st.button("🚶 PERMISO", use_container_width=True, disabled=not esta_dentro):
                     st.session_state.mostrar_obs = True
@@ -132,13 +137,13 @@ if dni_in:
                     registrar_en_nube(dni_in, nombre, "SALIDA")
 
             if u_tipo == "SALIDA":
-                st.warning("⚠️ Turno Finalizado hoy.")
+                st.warning("⚠️ Marcación de SALIDA registrada. Turno finalizado.")
 
             if st.session_state.mostrar_obs:
                 st.divider()
                 motivo = st.text_input("MOTIVO DEL PERMISO (PRESIONE ENTER):")
                 if motivo: registrar_en_nube(dni_in, nombre, "SALIDA_PERMISO", obs=motivo)
         else:
-            st.error("DNI no registrado.")
+            st.error("DNI no registrado en empleados.csv")
     except Exception as e:
         st.error(f"Error de sistema: {e}")
