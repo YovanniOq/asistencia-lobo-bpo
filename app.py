@@ -64,12 +64,12 @@ def registrar_en_nube(dni, nombre, tipo, obs=""):
             "Tardanza_Min": tardanza_min, "Descuento_Soles": descuento
         }])
         
-        # Leemos y actualizamos Google Sheets
+        # Actualización en Google Sheets
         df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
         df_final = pd.concat([df_h, nueva_fila], ignore_index=True)
         conn.update(spreadsheet=url_hoja, worksheet="Sheet1", data=df_final)
         
-        # ACTUALIZACIÓN LOCAL: Esto garantiza que el botón de ingreso se apague YA
+        # ACTUALIZACIÓN LOCAL: Garantiza bloqueo inmediato de botones
         st.session_state.registro_local[str(dni)] = tipo
         
         st.success(f"✅ {tipo} REGISTRADO CORRECTAMENTE")
@@ -78,7 +78,7 @@ def registrar_en_nube(dni, nombre, tipo, obs=""):
         st.session_state.mostrar_obs = False
         st.rerun()
     except Exception as e:
-        st.error(f"Error al grabar en la nube: {e}")
+        st.error(f"Error de conexión: {e}")
 
 # --- 4. INTERFAZ ---
 with st.sidebar:
@@ -94,7 +94,7 @@ with col1:
     if os.path.exists("logo_lobo.png"): 
         st.image("logo_lobo.png", width=150)
 with col2:
-    st.markdown("<h1 style='color: #1E3A8A;'>SR. LOBO BPO SOLUTIONS</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='color: #1E3A8A;'>SR. LOBO BPO SOLUTIONS</h1>", unsafe_allow_allow_html=True)
 
 st.divider()
 
@@ -113,43 +113,51 @@ if modo == "Marcación":
                 nombre = emp.iloc[0]['Nombre']
                 st.info(f"👤 TRABAJADOR: {nombre}")
                 
-                # 1. Ver estado en memoria local (inmediato)
-                u_tipo = st.session_state.registro_local.get(str(dni_in))
+                # Obtener estado actual (Drive + Local)
+                df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
+                hoy = obtener_hora_peru().strftime("%Y-%m-%d")
+                regs_hoy = df_h[(df_h['DNI'].astype(str) == str(dni_in)) & (df_h['Fecha'] == hoy)]
                 
-                # 2. Si no está en memoria, buscar en la nube
-                if not u_tipo:
-                    df_h = conn.read(spreadsheet=url_ho_ja if 'url_ho_ja' in locals() else url_hoja, worksheet="Sheet1", ttl=0)
-                    hoy = obtener_hora_peru().strftime("%Y-%m-%d")
-                    regs = df_h[(df_h['DNI'].astype(str) == str(dni_in)) & (df_h['Fecha'] == hoy)]
-                    u_tipo = regs.iloc[-1]['Tipo'] if not regs.empty else "NADA"
+                # Prioridad a la memoria local para rapidez
+                u_tipo = st.session_state.registro_local.get(str(dni_in), "NADA")
+                if not regs_hoy.empty:
+                    u_tipo = regs_hoy.iloc[-1]['Tipo']
 
                 # LÓGICA DE BOTONES
                 c1, c2, c3, c4 = st.columns(4)
-                
                 with c1:
-                    # Se bloquea INGRESO si ya existe CUALQUIER registro hoy
-                    btn_in = st.button("📥 INGRESO", use_container_width=True, disabled=(u_tipo != "NADA"))
-                    if btn_in: registrar_en_nube(dni_in, nombre, "INGRESO")
-                
+                    # Bloquea INGRESO si ya hubo cualquier marcación hoy
+                    if st.button("📥 INGRESO", use_container_width=True, disabled=(u_tipo != "NADA")):
+                        registrar_en_nube(dni_in, nombre, "INGRESO")
                 with c2:
-                    # PERMISO solo si está trabajando (Ingreso o Retorno)
                     ok_per = (u_tipo in ["INGRESO", "RETORNO_PERMISO"])
                     if st.button("🚶 PERMISO", use_container_width=True, disabled=not ok_per):
                         st.session_state.mostrar_obs = True
                         st.rerun()
-                
                 with c3:
-                    # RETORNO solo si su último estado fue SALIDA_PERMISO
                     ok_ret = (u_tipo == "SALIDA_PERMISO")
                     if st.button("🔙 RETORNO", use_container_width=True, disabled=not ok_ret):
                         registrar_en_nube(dni_in, nombre, "RETORNO_PERMISO")
-                
                 with c4:
-                    # SALIDA solo si está trabajando
                     if st.button("📤 SALIDA", use_container_width=True, disabled=not ok_per):
                         registrar_en_nube(dni_in, nombre, "SALIDA")
 
                 if u_tipo == "SALIDA":
-                    st.warning("⚠️ Marcación de SALIDA finalizada. Hasta mañana.")
+                    st.warning("Marcación de SALIDA detectada. Jornada terminada.")
 
-                if st.session
+                if st.session_state.mostrar_obs:
+                    st.divider()
+                    motivo = st.text_input("MOTIVO DEL PERMISO:")
+                    if motivo: registrar_en_nube(dni_in, nombre, "SALIDA_PERMISO", obs=motivo)
+            else:
+                st.error("DNI no registrado.")
+        except Exception as e:
+            st.error(f"Error base local: {e}")
+else:
+    # --- MÓDULO ADMIN SEGURO ---
+    st.header("📋 Reporte Mensual Lobo")
+    try:
+        df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
+        st.dataframe(df_h, use_container_width=True)
+    except Exception as e:
+        st.error(f"Error al cargar reporte: {e}")
