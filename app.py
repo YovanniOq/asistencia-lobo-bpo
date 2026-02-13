@@ -57,12 +57,13 @@ def registrar_en_nube(dni, nombre, tipo, obs=""):
             "Tardanza_Min": tardanza_min, "Descuento_Soles": descuento
         }])
         
+        # Leemos y escribimos de inmediato
         df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
         df_final = pd.concat([df_h, nueva_fila], ignore_index=True)
         conn.update(spreadsheet=url_hoja, worksheet="Sheet1", data=df_final)
         
         st.success(f"✅ {tipo} REGISTRADO")
-        time.sleep(1.5)
+        time.sleep(1)
         st.session_state.reset_key += 1
         st.session_state.mostrar_obs = False
         st.rerun()
@@ -99,49 +100,55 @@ if modo == "Marcación":
             nombre = emp.iloc[0]['Nombre']
             st.info(f"👤 TRABAJADOR: {nombre}")
             
-            # CONSULTA DE ESTADO ACTUAL
+            # RELECTURA OBLIGATORIA DEL DRIVE (TTL=0)
             df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
             hoy = obtener_hora_peru().strftime("%Y-%m-%d")
-            registros_hoy = df_h[(df_h['DNI'].astype(str) == str(dni_in)) & (df_h['Fecha'] == hoy)]
             
-            u_tipo = registros_hoy.iloc[-1]['Tipo'] if not registros_hoy.empty else "NADA"
+            # Filtramos registros de este DNI hoy
+            regs = df_h[(df_h['DNI'].astype(str) == str(dni_in)) & (df_h['Fecha'] == hoy)]
+            
+            # Determinar estado
+            u_tipo = regs.iloc[-1]['Tipo'] if not regs.empty else "NADA"
 
-            # --- LÓGICA DE BOTONES (CORREGIDA) ---
+            # --- REGLAS DE BOTONES ---
             c1, c2, c3, c4 = st.columns(4)
             
             with c1:
-                # INGRESO: Se deshabilita si ya hubo cualquier marcación hoy
-                if st.button("📥 INGRESO", use_container_width=True, disabled=(u_tipo != "NADA")):
+                # INGRESO: Se deshabilita si u_tipo ya NO es "NADA"
+                # Es decir, si ya marcó cualquier cosa hoy, NO PUEDE volver a marcar ingreso.
+                bloquear_ingreso = (u_tipo != "NADA")
+                if st.button("📥 INGRESO", use_container_width=True, disabled=bloquear_ingreso):
                     registrar_en_nube(dni_in, nombre, "INGRESO")
             
             with c2:
-                # PERMISO: Se habilita solo si está "dentro" (Ingreso o Retorno)
-                permiso_ok = (u_tipo == "INGRESO" or u_tipo == "RETORNO_PERMISO")
-                if st.button("🚶 PERMISO", use_container_width=True, disabled=not permiso_ok):
+                # PERMISO: Solo si su último registro fue INGRESO o RETORNO
+                esta_dentro = (u_tipo in ["INGRESO", "RETORNO_PERMISO"])
+                if st.button("🚶 PERMISO", use_container_width=True, disabled=not esta_dentro):
                     st.session_state.mostrar_obs = True
                     st.rerun()
             
             with c3:
-                # RETORNO: Se habilita solo si está en "Salida Permiso"
-                if st.button("🔙 RETORNO", use_container_width=True, disabled=(u_tipo != "SALIDA_PERMISO")):
+                # RETORNO: Solo si su último registro fue SALIDA_PERMISO
+                en_permiso = (u_tipo == "SALIDA_PERMISO")
+                if st.button("🔙 RETORNO", use_container_width=True, disabled=not en_permiso):
                     registrar_en_nube(dni_in, nombre, "RETORNO_PERMISO")
             
             with c4:
-                # SALIDA: Se habilita si está "dentro"
-                salida_ok = (u_tipo == "INGRESO" or u_tipo == "RETORNO_PERMISO")
-                if st.button("📤 SALIDA", use_container_width=True, disabled=not salida_ok):
+                # SALIDA: Solo si está dentro
+                if st.button("📤 SALIDA", use_container_width=True, disabled=not esta_dentro):
                     registrar_en_nube(dni_in, nombre, "SALIDA")
 
             if u_tipo == "SALIDA":
-                st.warning("Jornada finalizada por hoy.")
+                st.warning("Marcación de SALIDA detectada. Jornada terminada.")
 
             if st.session_state.mostrar_obs:
                 st.divider()
-                motivo = st.text_input("MOTIVO DEL PERMISO:")
-                if motivo: registrar_en_nube(dni_in, nombre, "SALIDA_PERMISO", obs=motivo)
+                motivo = st.text_input("MOTIVO DEL PERMISO (Presione Enter al terminar):")
+                if motivo: 
+                    registrar_en_nube(dni_in, nombre, "SALIDA_PERMISO", obs=motivo)
         else:
             st.error("DNI no registrado.")
 else:
-    st.header("Reporte Lobo BPO")
+    st.header("Historial Drive")
     df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
     st.dataframe(df_h, use_container_width=True)
