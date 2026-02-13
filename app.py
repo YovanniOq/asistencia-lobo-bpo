@@ -38,7 +38,7 @@ components.html("""
 conn = st.connection("gsheets", type=GSheetsConnection)
 url_hoja = st.secrets["connections"]["gsheets"]["spreadsheet"]
 
-# Memoria local para asegurar que el botón se bloquee AL INSTANTE
+# Memoria local para asegurar bloqueo instantáneo
 if "registro_local" not in st.session_state:
     st.session_state.registro_local = {}
 if "reset_key" not in st.session_state: st.session_state.reset_key = 0
@@ -64,7 +64,7 @@ def registrar_en_nube(dni, nombre, tipo, obs=""):
             "Tardanza_Min": tardanza_min, "Descuento_Soles": descuento
         }])
         
-        # Actualización en Google Sheets
+        # Leemos y actualizamos Google Sheets
         df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
         df_final = pd.concat([df_h, nueva_fila], ignore_index=True)
         conn.update(spreadsheet=url_hoja, worksheet="Sheet1", data=df_final)
@@ -94,7 +94,7 @@ with col1:
     if os.path.exists("logo_lobo.png"): 
         st.image("logo_lobo.png", width=150)
 with col2:
-    st.markdown("<h1 style='color: #1E3A8A;'>SR. LOBO BPO SOLUTIONS</h1>", unsafe_allow_allow_html=True)
+    st.markdown("<h1 style='color: #1E3A8A;'>SR. LOBO BPO SOLUTIONS</h1>", unsafe_allow_html=True)
 
 st.divider()
 
@@ -126,7 +126,6 @@ if modo == "Marcación":
                 # LÓGICA DE BOTONES
                 c1, c2, c3, c4 = st.columns(4)
                 with c1:
-                    # Bloquea INGRESO si ya hubo cualquier marcación hoy
                     if st.button("📥 INGRESO", use_container_width=True, disabled=(u_tipo != "NADA")):
                         registrar_en_nube(dni_in, nombre, "INGRESO")
                 with c2:
