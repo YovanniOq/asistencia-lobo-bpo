@@ -14,18 +14,14 @@ HORA_ENTRADA_OFICIAL = "08:00:00"
 def obtener_hora_peru():
     return datetime.now(timezone.utc) - timedelta(hours=5)
 
-# Foco automático inteligente
+# Foco automático
 components.html("""
     <script>
     const forceFocus = () => {
         const inputs = window.parent.document.querySelectorAll('input[type="text"]');
-        const passInputs = window.parent.document.querySelectorAll('input[type="password"]');
         if (inputs.length > 0) {
             const dniInput = inputs[0];
-            const activeElem = window.parent.document.activeElement;
-            let focusingOnPassword = false;
-            passInputs.forEach(p => { if(activeElem === p) focusingOnPassword = true; });
-            if (activeElem !== dniInput && !focusingOnPassword) {
+            if (window.parent.document.activeElement !== dniInput) {
                 dniInput.focus();
             }
         }
@@ -61,17 +57,17 @@ def registrar_en_nube(dni, nombre, tipo, obs=""):
             "Tardanza_Min": tardanza_min, "Descuento_Soles": descuento
         }])
         
-        df_actual = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
-        df_final = pd.concat([df_actual, nueva_fila], ignore_index=True)
+        df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
+        df_final = pd.concat([df_h, nueva_fila], ignore_index=True)
         conn.update(spreadsheet=url_hoja, worksheet="Sheet1", data=df_final)
         
-        st.success(f"✅ {tipo} REGISTRADO CORRECTAMENTE")
+        st.success(f"✅ {tipo} REGISTRADO")
         time.sleep(1.5)
         st.session_state.reset_key += 1
         st.session_state.mostrar_obs = False
         st.rerun()
     except Exception as e:
-        st.error(f"Error al conectar con la base de datos: {e}")
+        st.error(f"Error: {e}")
 
 # --- 4. INTERFAZ ---
 with st.sidebar:
@@ -96,61 +92,56 @@ if modo == "Marcación":
         dni_in = st.text_input("DNI", key=f"dni_{st.session_state.reset_key}", label_visibility="collapsed")
     
     if dni_in:
-        try:
-            df_emp = pd.read_csv("empleados.csv", dtype={'DNI': str})
-            emp = df_emp[df_emp['DNI'] == str(dni_in)]
+        df_emp = pd.read_csv("empleados.csv", dtype={'DNI': str})
+        emp = df_emp[df_emp['DNI'] == str(dni_in)]
+        
+        if not emp.empty:
+            nombre = emp.iloc[0]['Nombre']
+            st.info(f"👤 TRABAJADOR: {nombre}")
             
-            if not emp.empty:
-                nombre = emp.iloc[0]['Nombre']
-                st.info(f"👤 TRABAJADOR: {nombre}")
-                
-                # BUSCAR ÚLTIMO ESTADO DE HOY EN DRIVE
-                df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
-                hoy = obtener_hora_peru().strftime("%Y-%m-%d")
-                registros_hoy = df_h[(df_h['DNI'].astype(str) == str(dni_in)) & (df_h['Fecha'] == hoy)]
-                
-                ultimo_tipo = "NADA"
-                if not registros_hoy.empty:
-                    ultimo_tipo = registros_hoy.iloc[-1]['Tipo']
+            # CONSULTA DE ESTADO ACTUAL
+            df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
+            hoy = obtener_hora_peru().strftime("%Y-%m-%d")
+            registros_hoy = df_h[(df_h['DNI'].astype(str) == str(dni_in)) & (df_h['Fecha'] == hoy)]
+            
+            u_tipo = registros_hoy.iloc[-1]['Tipo'] if not registros_hoy.empty else "NADA"
 
-                # LÓGICA DE BOTONES BASADA EN EL ÚLTIMO REGISTRO
-                c1, c2, c3, c4 = st.columns(4)
-                
-                # REGLA 1: Solo ingreso si no tiene nada hoy
-                with c1:
-                    btn_ingreso = st.button("📥 INGRESO", use_container_width=True, disabled=(ultimo_tipo != "NADA"))
-                    if btn_ingreso: registrar_en_nube(dni_in, nombre, "INGRESO")
-                
-                # REGLA 2: Permiso solo si está "dentro" (Ingreso o Retorno)
-                with c2:
-                    btn_permiso = st.button("🚶 PERMISO", use_container_width=True, disabled=(ultimo_tipo not in ["INGRESO", "RETORNO_PERMISO"]))
-                    if btn_permiso: 
-                        st.session_state.mostrar_obs = True
-                        st.rerun()
-                
-                # REGLA 3: Retorno solo si salió a permiso
-                with c3:
-                    btn_retorno = st.button("🔙 RETORNO", use_container_width=True, disabled=(ultimo_tipo != "SALIDA_PERMISO"))
-                    if btn_retorno: registrar_en_nube(dni_in, nombre, "RETORNO_PERMISO")
-                
-                # REGLA 4: Salida si está dentro y no ha finalizado el día
-                with c4:
-                    btn_salida = st.button("📤 SALIDA", use_container_width=True, disabled=(ultimo_tipo not in ["INGRESO", "RETORNO_PERMISO"]))
-                    if btn_salida: registrar_en_nube(dni_in, nombre, "SALIDA")
+            # --- LÓGICA DE BOTONES (CORREGIDA) ---
+            c1, c2, c3, c4 = st.columns(4)
+            
+            with c1:
+                # INGRESO: Se deshabilita si ya hubo cualquier marcación hoy
+                if st.button("📥 INGRESO", use_container_width=True, disabled=(u_tipo != "NADA")):
+                    registrar_en_nube(dni_in, nombre, "INGRESO")
+            
+            with c2:
+                # PERMISO: Se habilita solo si está "dentro" (Ingreso o Retorno)
+                permiso_ok = (u_tipo == "INGRESO" or u_tipo == "RETORNO_PERMISO")
+                if st.button("🚶 PERMISO", use_container_width=True, disabled=not permiso_ok):
+                    st.session_state.mostrar_obs = True
+                    st.rerun()
+            
+            with c3:
+                # RETORNO: Se habilita solo si está en "Salida Permiso"
+                if st.button("🔙 RETORNO", use_container_width=True, disabled=(u_tipo != "SALIDA_PERMISO")):
+                    registrar_en_nube(dni_in, nombre, "RETORNO_PERMISO")
+            
+            with c4:
+                # SALIDA: Se habilita si está "dentro"
+                salida_ok = (u_tipo == "INGRESO" or u_tipo == "RETORNO_PERMISO")
+                if st.button("📤 SALIDA", use_container_width=True, disabled=not salida_ok):
+                    registrar_en_nube(dni_in, nombre, "SALIDA")
 
-                if ultimo_tipo == "SALIDA":
-                    st.warning("⚠️ Ya registraste tu SALIDA definitiva por hoy. ¡Hasta mañana!")
+            if u_tipo == "SALIDA":
+                st.warning("Jornada finalizada por hoy.")
 
-                if st.session_state.mostrar_obs:
-                    st.divider()
-                    motivo = st.text_input("MOTIVO DEL PERMISO (Escriba y ENTER):")
-                    if motivo: registrar_en_nube(dni_in, nombre, "SALIDA_PERMISO", obs=motivo)
-            else:
-                st.error("DNI no registrado.")
-        except:
-            st.error("Error al verificar historial.")
-
-else: # MODUL ADMIN (REPORTES)
-    st.header("📋 Reporte de Asistencia Lobo")
+            if st.session_state.mostrar_obs:
+                st.divider()
+                motivo = st.text_input("MOTIVO DEL PERMISO:")
+                if motivo: registrar_en_nube(dni_in, nombre, "SALIDA_PERMISO", obs=motivo)
+        else:
+            st.error("DNI no registrado.")
+else:
+    st.header("Reporte Lobo BPO")
     df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
     st.dataframe(df_h, use_container_width=True)
