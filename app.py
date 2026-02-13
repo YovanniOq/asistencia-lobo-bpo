@@ -14,7 +14,7 @@ HORA_ENTRADA_OFICIAL = "08:00:00"
 def obtener_hora_peru():
     return datetime.now(timezone.utc) - timedelta(hours=5)
 
-# Foco automático inteligente
+# Foco inteligente
 components.html("""
     <script>
     const forceFocus = () => {
@@ -23,10 +23,10 @@ components.html("""
         if (inputs.length > 0) {
             const dniInput = inputs[0];
             const activeElem = window.parent.document.activeElement;
-            const escribiendoObservacion = inputs.length > 1;
-            let focusingOnPassword = false;
-            passInputs.forEach(p => { if(activeElem === p) focusingOnPassword = true; });
-            if (activeElem !== dniInput && !focusingOnPassword && !escribiendoObservacion) {
+            const escribiendoObs = inputs.length > 1;
+            let focusingPass = false;
+            passInputs.forEach(p => { if(activeElem === p) focusingPass = true; });
+            if (activeElem !== dniInput && !focusingPass && !escribiendoObs) {
                 dniInput.focus();
             }
         }
@@ -49,10 +49,10 @@ def registrar_en_nube(dni, nombre, tipo, obs=""):
         tardanza_min = 0
         descuento = 0
         if tipo == "INGRESO":
-            hora_actual = ahora.time()
-            hora_limite = datetime.strptime(HORA_ENTRADA_OFICIAL, "%H:%M:%S").time()
-            if hora_actual > hora_limite:
-                diff = datetime.combine(datetime.today(), hora_actual) - datetime.combine(datetime.today(), hora_limite)
+            hora_act = ahora.time()
+            hora_lim = datetime.strptime(HORA_ENTRADA_OFICIAL, "%H:%M:%S").time()
+            if hora_act > hora_lim:
+                diff = datetime.combine(datetime.today(), hora_act) - datetime.combine(datetime.today(), hora_lim)
                 tardanza_min = int(diff.total_seconds() / 60)
                 descuento = round(tardanza_min * COSTO_MINUTO, 2)
 
@@ -62,7 +62,8 @@ def registrar_en_nube(dni, nombre, tipo, obs=""):
             "Tardanza_Min": tardanza_min, "Descuento_Soles": descuento
         }])
         
-        # Lectura sin caché para asegurar que escribimos sobre lo último
+        # Limpiamos caché antes de leer y escribir
+        st.cache_data.clear()
         df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
         df_final = pd.concat([df_h, nueva_fila], ignore_index=True)
         conn.update(spreadsheet=url_hoja, worksheet="Sheet1", data=df_final)
@@ -73,7 +74,7 @@ def registrar_en_nube(dni, nombre, tipo, obs=""):
         st.session_state.mostrar_obs = False
         st.rerun()
     except Exception as e:
-        st.error(f"Error al grabar: {e}")
+        st.error(f"Error de conexión: {e}")
 
 # --- 4. INTERFAZ ---
 with st.sidebar:
@@ -98,6 +99,9 @@ if modo == "Marcación":
         dni_in = st.text_input("DNI", key=f"dni_{st.session_state.reset_key}", label_visibility="collapsed")
     
     if dni_in:
+        # Limpieza de caché forzada al ingresar el DNI para leer el estado actual real
+        st.cache_data.clear()
+        
         try:
             df_emp = pd.read_csv("empleados.csv", dtype={'DNI': str})
             emp = df_emp[df_emp['DNI'] == str(dni_in)]
@@ -106,40 +110,31 @@ if modo == "Marcación":
                 nombre = emp.iloc[0]['Nombre']
                 st.info(f"👤 TRABAJADOR: {nombre}")
                 
-                # --- CONSULTA OBLIGATORIA AL DRIVE (Sincronización Real) ---
-                # ttl=0 obliga a la App a ignorar su memoria interna y mirar el Excel
+                # Leemos la nube sin caché
                 df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
                 hoy = obtener_hora_peru().strftime("%Y-%m-%d")
                 
-                # Convertimos DNI a string en la búsqueda para evitar errores de tipo
+                # Aseguramos que el DNI se compare como texto
                 df_h['DNI'] = df_h['DNI'].astype(str)
-                regs_hoy = df_h[(df_h['DNI'] == str(dni_in)) & (df_h['Fecha'] == hoy)]
+                regs = df_h[(df_h['DNI'] == str(dni_in)) & (df_h['Fecha'] == hoy)]
                 
-                # Determinamos el estado basado en el último registro encontrado
-                u_tipo = regs_hoy.iloc[-1]['Tipo'] if not regs_hoy.empty else "NADA"
+                u_tipo = regs.iloc[-1]['Tipo'] if not regs.empty else "NADA"
 
-                # DIBUJAR BOTONES SEGÚN LA NUBE
+                # BOTONES
                 c1, c2, c3, c4 = st.columns(4)
-                
                 with c1:
-                    # INGRESO: Se bloquea si u_tipo ya NO es "NADA"
+                    # Se deshabilita si u_tipo NO es NADA
                     if st.button("📥 INGRESO", use_container_width=True, disabled=(u_tipo != "NADA")):
                         registrar_en_nube(dni_in, nombre, "INGRESO")
-                
                 with c2:
-                    # PERMISO: Solo si está "dentro"
                     esta_dentro = (u_tipo in ["INGRESO", "RETORNO_PERMISO"])
                     if st.button("🚶 PERMISO", use_container_width=True, disabled=not esta_dentro):
                         st.session_state.mostrar_obs = True
                         st.rerun()
-                
                 with c3:
-                    # RETORNO: Solo si está en permiso
                     if st.button("🔙 RETORNO", use_container_width=True, disabled=(u_tipo != "SALIDA_PERMISO")):
                         registrar_en_nube(dni_in, nombre, "RETORNO_PERMISO")
-                
                 with c4:
-                    # SALIDA: Solo si está dentro
                     if st.button("📤 SALIDA", use_container_width=True, disabled=not esta_dentro):
                         registrar_en_nube(dni_in, nombre, "SALIDA")
 
@@ -149,14 +144,12 @@ if modo == "Marcación":
                 if st.session_state.mostrar_obs:
                     st.divider()
                     motivo = st.text_input("MOTIVO DEL PERMISO:")
-                    if motivo: 
-                        registrar_en_nube(dni_in, nombre, "SALIDA_PERMISO", obs=motivo)
+                    if motivo: registrar_en_nube(dni_in, nombre, "SALIDA_PERMISO", obs=motivo)
             else:
                 st.error("DNI no registrado.")
         except Exception as e:
-            st.error(f"Error al verificar estado: {e}")
+            st.error(f"Error: {e}")
 else:
-    # MODULO ADMIN
-    st.header("📋 Reporte Lobo")
+    st.header("Historial")
     df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
     st.dataframe(df_h, use_container_width=True)
