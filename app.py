@@ -14,7 +14,7 @@ HORA_ENTRADA_OFICIAL = "08:00:00"
 def obtener_hora_peru():
     return datetime.now(timezone.utc) - timedelta(hours=5)
 
-# Foco automático
+# Foco automático persistente
 components.html("""
     <script>
     const forceFocus = () => {
@@ -30,9 +30,13 @@ components.html("""
     </script>
 """, height=0)
 
-# --- 2. CONEXIÓN ---
+# --- 2. CONEXIÓN Y CACHÉ LOCAL ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 url_hoja = st.secrets["connections"]["gsheets"]["spreadsheet"]
+
+# Memoria volátil para asegurar bloqueo inmediato sin esperar al Drive
+if "registro_local" not in st.session_state:
+    st.session_state.registro_local = {}
 
 if "reset_key" not in st.session_state: st.session_state.reset_key = 0
 if "mostrar_obs" not in st.session_state: st.session_state.mostrar_obs = False
@@ -57,10 +61,13 @@ def registrar_en_nube(dni, nombre, tipo, obs=""):
             "Tardanza_Min": tardanza_min, "Descuento_Soles": descuento
         }])
         
-        # Leemos y escribimos de inmediato
+        # Guardar en Nube
         df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
         df_final = pd.concat([df_h, nueva_fila], ignore_index=True)
-        conn.update(spreadsheet=url_hoja, worksheet="Sheet1", data=df_final)
+        conn.update(spreadsheet=url_ho_ja, worksheet="Sheet1", data=df_final)
+        
+        # GUARDAR EN MEMORIA LOCAL (Para bloqueo instantáneo)
+        st.session_state.registro_local[str(dni)] = tipo
         
         st.success(f"✅ {tipo} REGISTRADO")
         time.sleep(1)
@@ -100,55 +107,49 @@ if modo == "Marcación":
             nombre = emp.iloc[0]['Nombre']
             st.info(f"👤 TRABAJADOR: {nombre}")
             
-            # RELECTURA OBLIGATORIA DEL DRIVE (TTL=0)
+            # --- DETERMINAR ESTADO (DRIVE + LOCAL) ---
             df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
             hoy = obtener_hora_peru().strftime("%Y-%m-%d")
-            
-            # Filtramos registros de este DNI hoy
             regs = df_h[(df_h['DNI'].astype(str) == str(dni_in)) & (df_h['Fecha'] == hoy)]
             
-            # Determinar estado
-            u_tipo = regs.iloc[-1]['Tipo'] if not regs.empty else "NADA"
+            # Prioridad a la memoria local si el Drive aún no actualiza
+            u_tipo = st.session_state.registro_local.get(str(dni_in), "NADA")
+            if not regs.empty:
+                u_tipo = regs.iloc[-1]['Tipo']
 
-            # --- REGLAS DE BOTONES ---
+            # --- DIBUJAR BOTONES CON LÓGICA ESTRICTA ---
             c1, c2, c3, c4 = st.columns(4)
             
             with c1:
-                # INGRESO: Se deshabilita si u_tipo ya NO es "NADA"
-                # Es decir, si ya marcó cualquier cosa hoy, NO PUEDE volver a marcar ingreso.
-                bloquear_ingreso = (u_tipo != "NADA")
-                if st.button("📥 INGRESO", use_container_width=True, disabled=bloquear_ingreso):
+                # Bloqueo total de INGRESO si ya hay marcación hoy
+                if st.button("📥 INGRESO", use_container_width=True, disabled=(u_tipo != "NADA")):
                     registrar_en_nube(dni_in, nombre, "INGRESO")
             
             with c2:
-                # PERMISO: Solo si su último registro fue INGRESO o RETORNO
-                esta_dentro = (u_tipo in ["INGRESO", "RETORNO_PERMISO"])
-                if st.button("🚶 PERMISO", use_container_width=True, disabled=not esta_dentro):
+                # Solo PERMISO si está trabajando
+                esta_trabajando = (u_tipo in ["INGRESO", "RETORNO_PERMISO"])
+                if st.button("🚶 PERMISO", use_container_width=True, disabled=not esta_trabajando):
                     st.session_state.mostrar_obs = True
                     st.rerun()
             
             with c3:
-                # RETORNO: Solo si su último registro fue SALIDA_PERMISO
-                en_permiso = (u_tipo == "SALIDA_PERMISO")
-                if st.button("🔙 RETORNO", use_container_width=True, disabled=not en_permiso):
+                # Solo RETORNO si salió a permiso
+                esta_afuera = (u_tipo == "SALIDA_PERMISO")
+                if st.button("🔙 RETORNO", use_container_width=True, disabled=not esta_afuera):
                     registrar_en_nube(dni_in, nombre, "RETORNO_PERMISO")
             
             with c4:
-                # SALIDA: Solo si está dentro
-                if st.button("📤 SALIDA", use_container_width=True, disabled=not esta_dentro):
+                # Solo SALIDA si está trabajando
+                if st.button("📤 SALIDA", use_container_width=True, disabled=not esta_trabajando):
                     registrar_en_nube(dni_in, nombre, "SALIDA")
 
             if u_tipo == "SALIDA":
-                st.warning("Marcación de SALIDA detectada. Jornada terminada.")
+                st.warning("⚠️ Turno Finalizado. No se permiten más marcaciones hoy.")
 
             if st.session_state.mostrar_obs:
                 st.divider()
-                motivo = st.text_input("MOTIVO DEL PERMISO (Presione Enter al terminar):")
+                motivo = st.text_input("MOTIVO DEL PERMISO:")
                 if motivo: 
                     registrar_en_nube(dni_in, nombre, "SALIDA_PERMISO", obs=motivo)
         else:
             st.error("DNI no registrado.")
-else:
-    st.header("Historial Drive")
-    df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
-    st.dataframe(df_h, use_container_width=True)
