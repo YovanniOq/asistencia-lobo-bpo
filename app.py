@@ -14,12 +14,30 @@ HORA_ENTRADA_OFICIAL = "08:00:00"
 def obtener_hora_peru():
     return datetime.now(timezone.utc) - timedelta(hours=5)
 
-# Foco inteligente: No salta si hay más de una caja (para observaciones)
+# --- JAVASCRIPT DE FOCO INTELIGENTE MEJORADO ---
+# Ahora respeta si el usuario está en el campo de PASSWORD o OBSERVACIONES
 components.html("""
     <script>
     const forceFocus = () => {
         const inputs = window.parent.document.querySelectorAll('input[type="text"]');
-        if (inputs.length === 1) { inputs[0].focus(); }
+        const passInputs = window.parent.document.querySelectorAll('input[type="password"]');
+        
+        if (inputs.length > 0) {
+            const dniInput = inputs[0];
+            const activeElem = window.parent.document.activeElement;
+            
+            // Detectar si el usuario está en la caja de observaciones (segundo input de texto)
+            const escribiendoObservacion = inputs.length > 1 && activeElem === inputs[1];
+            
+            // Detectar si el usuario está en la caja de contraseña
+            let escribiendoPassword = false;
+            passInputs.forEach(p => { if(activeElem === p) escribiendoPassword = true; });
+
+            // Solo forzar foco al DNI si NO estamos en password ni en observaciones
+            if (activeElem !== dniInput && !escribiendoPassword && !escribiendoObservacion) {
+                dniInput.focus();
+            }
+        }
     };
     setInterval(forceFocus, 1000);
     </script>
@@ -57,7 +75,7 @@ def registrar_en_nube(dni, nombre, tipo, obs=""):
             "Descuento_Soles": descuento
         }])
         
-        st.cache_data.clear() # Limpiar caché para lectura fresca
+        st.cache_data.clear()
         df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
         df_final = pd.concat([df_h, nueva_fila], ignore_index=True)
         conn.update(spreadsheet=url_hoja, worksheet="Sheet1", data=df_final)
@@ -68,14 +86,16 @@ def registrar_en_nube(dni, nombre, tipo, obs=""):
         st.session_state.mostrar_obs = False
         st.rerun()
     except Exception as e:
-        st.error(f"Error al grabar: {e}")
+        st.error(f"Error: {e}")
 
 # --- 4. INTERFAZ ---
 with st.sidebar:
     st.title("🐺 Gestión Lobo")
-    if st.checkbox("Admin"):
-        if st.text_input("Clave:", type="password") == "Lobo2026":
-            st.info("Panel de Historial activado")
+    if st.checkbox("Acceso Administrador"):
+        # El JS ahora permitirá escribir aquí sin saltar al DNI
+        clave = st.text_input("Contraseña:", type="password")
+        if clave == "Lobo2026":
+            st.info("Modo Admin: Historial disponible abajo.")
 
 col1, col2 = st.columns([1, 4])
 with col1:
@@ -86,9 +106,8 @@ with col2:
 st.divider()
 
 st.write("### DIGITE SU DNI:")
-# --- CAJA DE DNI LIMITADA A 12 CARACTERES Y TAMAÑO CORTO ---
-col_caja, _ = st.columns([1, 4])
-with col_caja:
+c_dni, _ = st.columns([1, 4])
+with c_dni:
     dni_in = st.text_input("DNI_BOX", key=f"dni_{st.session_state.reset_key}", label_visibility="collapsed", max_chars=12)
 
 if dni_in:
@@ -101,30 +120,18 @@ if dni_in:
             nombre = emp.iloc[0]['Nombre']
             st.info(f"👤 TRABAJADOR: {nombre}")
             
-            # --- LECTURA DE NUBE CON CONVERSIÓN FORZADA ---
             df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
             hoy = obtener_hora_peru().strftime("%Y-%m-%d")
-            
-            # Convertimos DNI en el historial a TEXTO y quitamos decimales (.0) si existen
             df_h['DNI'] = df_h['DNI'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
-            
-            # Filtramos registros de hoy para este DNI
             regs = df_h[(df_h['DNI'] == str(dni_in).strip()) & (df_h['Fecha'] == hoy)]
-            
-            u_tipo = "NADA"
-            if not regs.empty:
-                u_tipo = str(regs.iloc[-1]['Tipo']).strip().upper()
+            u_tipo = str(regs.iloc[-1]['Tipo']).strip().upper() if not regs.empty else "NADA"
 
-            # --- LÓGICA DE BOTONES ---
             c1, c2, c3, c4 = st.columns(4)
-            
             with c1:
-                # Se bloquea INGRESO si ya existe registro hoy
                 if st.button("📥 INGRESO", use_container_width=True, disabled=(u_tipo != "NADA")):
                     registrar_en_nube(dni_in, nombre, "INGRESO")
             
             esta_dentro = (u_tipo == "INGRESO" or u_tipo == "RETORNO_PERMISO")
-            
             with c2:
                 if st.button("🚶 PERMISO", use_container_width=True, disabled=not esta_dentro):
                     st.session_state.mostrar_obs = True
@@ -136,14 +143,11 @@ if dni_in:
                 if st.button("📤 SALIDA", use_container_width=True, disabled=not esta_dentro):
                     registrar_en_nube(dni_in, nombre, "SALIDA")
 
-            if u_tipo == "SALIDA":
-                st.warning("⚠️ Marcación de SALIDA registrada. Turno finalizado.")
-
             if st.session_state.mostrar_obs:
                 st.divider()
-                motivo = st.text_input("MOTIVO DEL PERMISO (PRESIONE ENTER):")
+                motivo = st.text_input("MOTIVO DEL PERMISO (ENTER):")
                 if motivo: registrar_en_nube(dni_in, nombre, "SALIDA_PERMISO", obs=motivo)
         else:
-            st.error("DNI no registrado en empleados.csv")
-    except Exception as e:
-        st.error(f"Error de sistema: {e}")
+            st.error("DNI no registrado.")
+    except Exception:
+        pass
