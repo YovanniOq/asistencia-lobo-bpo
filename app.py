@@ -19,23 +19,16 @@ components.html("""
     <script>
     const forceFocus = () => {
         const inputs = window.parent.document.querySelectorAll('input[type="text"]');
-        const passInputs = window.parent.document.querySelectorAll('input[type="password"]');
-        if (inputs.length > 0) {
-            const dniInput = inputs[0];
-            const activeElem = window.parent.document.activeElement;
-            const escribiendoObs = inputs.length > 1;
-            let focusingPass = false;
-            passInputs.forEach(p => { if(activeElem === p) focusingPass = true; });
-            if (activeElem !== dniInput && !focusingPass && !escribiendoObs) {
-                dniInput.focus();
-            }
+        if (inputs.length === 1) {
+            inputs[0].focus();
         }
     };
     setInterval(forceFocus, 1000);
     </script>
 """, height=0)
 
-# --- 2. CONEXIÓN (INSTANCIA INICIAL) ---
+# --- 2. CONEXIÓN ---
+conn = st.connection("gsheets", type=GSheetsConnection)
 url_hoja = st.secrets["connections"]["gsheets"]["spreadsheet"]
 
 if "reset_key" not in st.session_state: st.session_state.reset_key = 0
@@ -44,8 +37,6 @@ if "mostrar_obs" not in st.session_state: st.session_state.mostrar_obs = False
 # --- 3. FUNCIÓN DE GRABACIÓN ---
 def registrar_en_nube(dni, nombre, tipo, obs=""):
     try:
-        # Forzar reconexión para escribir
-        conn_write = st.connection("gsheets", type=GSheetsConnection, ttl=0)
         ahora = obtener_hora_peru()
         tardanza_min = 0
         descuento = 0
@@ -63,17 +54,19 @@ def registrar_en_nube(dni, nombre, tipo, obs=""):
             "Tardanza_Min": tardanza_min, "Descuento_Soles": descuento
         }])
         
-        df_h = conn_write.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
+        # Limpiar caché y actualizar
+        st.cache_data.clear()
+        df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
         df_final = pd.concat([df_h, nueva_fila], ignore_index=True)
-        conn_write.update(spreadsheet=url_hoja, worksheet="Sheet1", data=df_final)
+        conn.update(spreadsheet=url_hoja, worksheet="Sheet1", data=df_final)
         
         st.success(f"✅ {tipo} REGISTRADO")
-        time.sleep(1)
+        time.sleep(1.2)
         st.session_state.reset_key += 1
         st.session_state.mostrar_obs = False
         st.rerun()
     except Exception as e:
-        st.error(f"Error al grabar: {e}")
+        st.error(f"Error: {e}")
 
 # --- 4. INTERFAZ ---
 with st.sidebar:
@@ -93,63 +86,65 @@ st.divider()
 
 if modo == "Marcación":
     st.write("### DIGITE SU DNI:")
-    c_in, _ = st.columns([1, 4])
-    with c_in:
-        dni_in = st.text_input("DNI", key=f"dni_{st.session_state.reset_key}", label_visibility="collapsed")
+    dni_in = st.text_input("DNI_INPUT", key=f"dni_{st.session_state.reset_key}", label_visibility="collapsed")
     
     if dni_in:
-        try:
-            # RE-CONEXIÓN AGRESIVA: Cada vez que se pone un DNI, se crea una conexión nueva
-            # Esto ignora CUALQUIER caché anterior
-            conn_read = st.connection("gsheets", type=GSheetsConnection, ttl=0)
+        # Forzar lectura fresca de la nube cada vez que se digita el DNI
+        st.cache_data.clear()
+        df_emp = pd.read_csv("empleados.csv", dtype={'DNI': str})
+        emp = df_emp[df_emp['DNI'] == str(dni_in)]
+        
+        if not emp.empty:
+            nombre = emp.iloc[0]['Nombre']
+            st.info(f"👤 TRABAJADOR: {nombre}")
             
-            df_emp = pd.read_csv("empleados.csv", dtype={'DNI': str})
-            emp = df_emp[df_emp['DNI'] == str(dni_in)]
+            # --- BÚSQUEDA DE HISTORIAL BLINDADA ---
+            df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
+            hoy = obtener_hora_peru().strftime("%Y-%m-%d")
             
-            if not emp.empty:
-                nombre = emp.iloc[0]['Nombre']
-                st.info(f"👤 TRABAJADOR: {nombre}")
-                
-                # Leemos la nube con la conexión recién creada
-                df_h = conn_read.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
-                hoy = obtener_hora_peru().strftime("%Y-%m-%d")
-                
-                # Búsqueda rigurosa de historial
-                df_h['DNI'] = df_h['DNI'].astype(str)
-                regs = df_h[(df_h['DNI'] == str(dni_in)) & (df_h['Fecha'] == hoy)]
-                
-                u_tipo = regs.iloc[-1]['Tipo'] if not regs.empty else "NADA"
+            # Filtramos por fecha hoy y comparamos DNI como texto para evitar fallos de formato
+            df_h['DNI'] = df_h['DNI'].astype(str)
+            regs = df_h[(df_h['DNI'] == str(dni_in)) & (df_h['Fecha'] == hoy)]
+            
+            u_tipo = "NADA"
+            if not regs.empty:
+                u_tipo = str(regs.iloc[-1]['Tipo']).strip().upper()
 
-                # Lógica de Botones
-                c1, c2, c3, c4 = st.columns(4)
-                with c1:
-                    if st.button("📥 INGRESO", use_container_width=True, disabled=(u_tipo != "NADA")):
-                        registrar_en_nube(dni_in, nombre, "INGRESO")
-                with c2:
-                    esta_dentro = (u_tipo in ["INGRESO", "RETORNO_PERMISO"])
-                    if st.button("🚶 PERMISO", use_container_width=True, disabled=not esta_dentro):
-                        st.session_state.mostrar_obs = True
-                        st.rerun()
-                with c3:
-                    if st.button("🔙 RETORNO", use_container_width=True, disabled=(u_tipo != "SALIDA_PERMISO")):
-                        registrar_en_nube(dni_in, nombre, "RETORNO_PERMISO")
-                with c4:
-                    if st.button("📤 SALIDA", use_container_width=True, disabled=not esta_dentro):
-                        registrar_en_nube(dni_in, nombre, "SALIDA")
+            # --- LÓGICA DE BOTONES ---
+            c1, c2, c3, c4 = st.columns(4)
+            
+            # Botón INGRESO: Solo si no hay nada hoy
+            with c1:
+                if st.button("📥 INGRESO", use_container_width=True, disabled=(u_tipo != "NADA")):
+                    registrar_en_nube(dni_in, nombre, "INGRESO")
+            
+            # Botón PERMISO: Solo si está dentro
+            esta_dentro = (u_tipo == "INGRESO" or u_tipo == "RETORNO_PERMISO")
+            with c2:
+                if st.button("🚶 PERMISO", use_container_width=True, disabled=not esta_dentro):
+                    st.session_state.mostrar_obs = True
+                    st.rerun()
+            
+            # Botón RETORNO: Solo si salió a permiso
+            with c3:
+                if st.button("🔙 RETORNO", use_container_width=True, disabled=(u_tipo != "SALIDA_PERMISO")):
+                    registrar_en_nube(dni_in, nombre, "RETORNO_PERMISO")
+            
+            # Botón SALIDA: Solo si está dentro
+            with c4:
+                if st.button("📤 SALIDA", use_container_width=True, disabled=not esta_dentro):
+                    registrar_en_nube(dni_in, nombre, "SALIDA")
 
-                if u_tipo == "SALIDA":
-                    st.warning("⚠️ Turno Finalizado por hoy.")
+            if u_tipo == "SALIDA":
+                st.warning("⚠️ Ya marcaste tu SALIDA hoy. ¡Buen descanso!")
 
-                if st.session_state.mostrar_obs:
-                    st.divider()
-                    motivo = st.text_input("MOTIVO DEL PERMISO:")
-                    if motivo: registrar_en_nube(dni_in, nombre, "SALIDA_PERMISO", obs=motivo)
-            else:
-                st.error("DNI no registrado.")
-        except Exception as e:
-            st.error(f"Error de sistema: {e}")
+            if st.session_state.mostrar_obs:
+                st.divider()
+                motivo = st.text_input("ESCRIBA EL MOTIVO DEL PERMISO:")
+                if motivo: registrar_en_nube(dni_in, nombre, "SALIDA_PERMISO", obs=motivo)
+        else:
+            st.error("DNI no registrado.")
 else:
     st.header("Historial")
-    conn_hist = st.connection("gsheets", type=GSheetsConnection, ttl=0)
-    df_h = conn_hist.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
+    df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
     st.dataframe(df_h, use_container_width=True)
