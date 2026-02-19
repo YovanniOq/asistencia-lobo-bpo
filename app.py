@@ -75,7 +75,7 @@ def registrar_en_nube(dni, nombre, tipo, obs=""):
     except Exception as e:
         st.error(f"Error: {e}")
 
-# --- 4. INTERFAZ (CABECERA AJUSTADA) ---
+# --- 4. INTERFAZ (CABECERA ALINEADA Y LOGO GRANDE) ---
 modo = "Marcación"
 with st.sidebar:
     st.title("🐺 Gestión Lobo")
@@ -84,16 +84,22 @@ with st.sidebar:
         if clave == "Lobo2026":
             modo = "Admin"
 
-# Diseño de Cabecera Centrada
-c_izq, c_logo, c_tit, c_der = st.columns([1, 2, 5, 1])
+# Ajuste de columnas para centrar verticalmente
+c_izq, c_logo, c_tit, c_der = st.columns([1, 3, 6, 1])
+
 with c_logo:
     if os.path.exists("logo_lobo.png"):
-        st.image("logo_lobo.png", width=220)
+        # Usamos un contenedor vacío para dar espacio arriba del logo y bajarlo
+        st.write("") 
+        st.write("")
+        st.image("logo_lobo.png", width=300)
+
 with c_tit:
+    # Ajustamos el título y subtítulo
     st.markdown("""
-        <div style='padding-top: 20px;'>
-            <h1 style='color: #1E3A8A; font-size: 45px; margin-bottom: 0px;'>Marcación Sr. Lobo</h1>
-            <h3 style='color: #444; font-size: 24px; margin-top: 0px;'>Sr. Lobo BPO Solutions</h3>
+        <div style='padding-top: 15px;'>
+            <h1 style='color: #1E3A8A; font-size: 50px; margin-bottom: 0px;'>Marcación Sr. Lobo</h1>
+            <h3 style='color: #444; font-size: 26px; margin-top: -10px;'>Sr. Lobo BPO Solutions</h3>
         </div>
     """, unsafe_allow_html=True)
 
