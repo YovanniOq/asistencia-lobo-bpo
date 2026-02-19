@@ -42,7 +42,7 @@ url_hoja = st.secrets["connections"]["gsheets"]["spreadsheet"]
 if "reset_key" not in st.session_state: st.session_state.reset_key = 0
 if "mostrar_obs" not in st.session_state: st.session_state.mostrar_obs = False
 
-# --- 3. FUNCIÓN DE GRABACIÓN ---
+# --- 3. FUNCIÓN DE GRABACIÓN (PERSISTENCIA GARANTIZADA) ---
 def registrar_en_nube(dni, nombre, tipo, obs=""):
     try:
         ahora = obtener_hora_peru()
@@ -84,18 +84,17 @@ with st.sidebar:
         if clave == "Lobo2026":
             modo = "Admin"
 
-# Ajuste de columnas para centrar verticalmente
+# Columnas para centrar logo y título
 c_izq, c_logo, c_tit, c_der = st.columns([1, 3, 6, 1])
 
 with c_logo:
     if os.path.exists("logo_lobo.png"):
-        # Usamos un contenedor vacío para dar espacio arriba del logo y bajarlo
+        # Bajamos un poco el logo para centrarlo con el texto
         st.write("") 
         st.write("")
         st.image("logo_lobo.png", width=300)
 
 with c_tit:
-    # Ajustamos el título y subtítulo
     st.markdown("""
         <div style='padding-top: 15px;'>
             <h1 style='color: #1E3A8A; font-size: 50px; margin-bottom: 0px;'>Marcación Sr. Lobo</h1>
@@ -120,6 +119,7 @@ if modo == "Marcación":
             nombre = emp.iloc[0]['Nombre']
             st.info(f"👤 TRABAJADOR: {nombre}")
             
+            # Recuperar estado de la nube (Previene duplicados al reabrir navegador)
             df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
             hoy = obtener_hora_peru().strftime("%Y-%m-%d")
             df_h['DNI'] = df_h['DNI'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
@@ -161,4 +161,4 @@ else: # --- MÓDULO ADMIN ---
         st.dataframe(df_f.drop(columns=['Fecha_dt']), use_container_width=True)
         
         csv = df_f.to_csv(index=False).encode('utf-8')
-        st.download_button("📥 Descargar Reporte", csv, f"Reporte_{sel_anio}.csv", "text/csv")
+        st.download_button("📥 Descargar Reporte CSV", csv, f"Reporte_{sel_anio}.csv", "text/csv")
