@@ -25,7 +25,7 @@ components.html("""
             const activeElem = window.parent.document.activeElement;
             const escribiendoObs = inputs.length > 1 && activeElem === inputs[1];
             let escribiendoPass = false;
-            passInputs.forEach(p => { if(activeElem === p) focusingPass = true; });
+            passInputs.forEach(p => { if(activeElem === p) escribiendoPass = true; });
             if (activeElem !== dniInput && !escribiendoPass && !escribiendoObs) {
                 dniInput.focus();
             }
@@ -75,7 +75,7 @@ def registrar_en_nube(dni, nombre, tipo, obs=""):
     except Exception as e:
         st.error(f"Error: {e}")
 
-# --- 4. INTERFAZ (CABECERA CENTRADA Y GRANDE) ---
+# --- 4. INTERFAZ (CABECERA AJUSTADA) ---
 modo = "Marcación"
 with st.sidebar:
     st.title("🐺 Gestión Lobo")
@@ -84,13 +84,18 @@ with st.sidebar:
         if clave == "Lobo2026":
             modo = "Admin"
 
-# Columnas para centrar logo y título
+# Diseño de Cabecera Centrada
 c_izq, c_logo, c_tit, c_der = st.columns([1, 2, 5, 1])
 with c_logo:
     if os.path.exists("logo_lobo.png"):
         st.image("logo_lobo.png", width=220)
 with c_tit:
-    st.markdown("<div style='padding-top: 30px;'><h1 style='color: #1E3A8A; font-size: 42px;'>SR. LOBO BPO SOLUTIONS</h1></div>", unsafe_allow_html=True)
+    st.markdown("""
+        <div style='padding-top: 20px;'>
+            <h1 style='color: #1E3A8A; font-size: 45px; margin-bottom: 0px;'>Marcación Sr. Lobo</h1>
+            <h3 style='color: #444; font-size: 24px; margin-top: 0px;'>Sr. Lobo BPO Solutions</h3>
+        </div>
+    """, unsafe_allow_html=True)
 
 st.divider()
 
@@ -138,7 +143,7 @@ if modo == "Marcación":
         else:
             st.error("DNI no registrado.")
 
-else: # --- ADMIN ---
+else: # --- MÓDULO ADMIN ---
     st.header("📋 Historial Administrativo")
     df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
     if not df_h.empty:
