@@ -25,7 +25,7 @@ components.html("""
             const activeElem = window.parent.document.activeElement;
             const escribiendoObs = inputs.length > 1 && activeElem === inputs[1];
             let escribiendoPass = false;
-            passInputs.forEach(p => { if(activeElem === p) escribiendoPass = true; });
+            passInputs.forEach(p => { if(activeElem === p) focusingPass = true; });
             if (activeElem !== dniInput && !escribiendoPass && !escribiendoObs) {
                 dniInput.focus();
             }
@@ -75,20 +75,22 @@ def registrar_en_nube(dni, nombre, tipo, obs=""):
     except Exception as e:
         st.error(f"Error: {e}")
 
-# --- 4. INTERFAZ ---
+# --- 4. INTERFAZ (CABECERA CENTRADA Y GRANDE) ---
 modo = "Marcación"
 with st.sidebar:
     st.title("🐺 Gestión Lobo")
     if st.checkbox("Acceso Administrador"):
         clave = st.text_input("Contraseña:", type="password")
         if clave == "Lobo2026":
-            modo = "Historial"
+            modo = "Admin"
 
-col1, col2 = st.columns([1, 4])
-with col1:
-    if os.path.exists("logo_lobo.png"): st.image("logo_lobo.png", width=120)
-with col2:
-    st.markdown("<h1 style='color: #1E3A8A;'>SR. LOBO BPO SOLUTIONS</h1>", unsafe_allow_html=True)
+# Columnas para centrar logo y título
+c_izq, c_logo, c_tit, c_der = st.columns([1, 2, 5, 1])
+with c_logo:
+    if os.path.exists("logo_lobo.png"):
+        st.image("logo_lobo.png", width=220)
+with c_tit:
+    st.markdown("<div style='padding-top: 30px;'><h1 style='color: #1E3A8A; font-size: 42px;'>SR. LOBO BPO SOLUTIONS</h1></div>", unsafe_allow_html=True)
 
 st.divider()
 
@@ -136,24 +138,16 @@ if modo == "Marcación":
         else:
             st.error("DNI no registrado.")
 
-else: # --- MÓDULO ADMIN CON HISTORIAL ---
-    st.header("📋 Reporte Histórico")
+else: # --- ADMIN ---
+    st.header("📋 Historial Administrativo")
     df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
     if not df_h.empty:
         df_h['Fecha_dt'] = pd.to_datetime(df_h['Fecha'], errors='coerce')
-        meses_dict = {1:"Enero", 2:"Febrero", 3:"Marzo", 4:"Abril", 5:"Mayo", 6:"Junio", 
-                      7:"Julio", 8:"Agosto", 9:"Septiembre", 10:"Octubre", 11:"Noviembre", 12:"Diciembre"}
+        anios = sorted(df_h['Fecha_dt'].dt.year.unique(), reverse=True)
+        sel_anio = st.selectbox("Año", anios)
         
-        f1, f2, _ = st.columns([1, 1, 2])
-        with f1:
-            anios = sorted(df_h['Fecha_dt'].dt.year.unique(), reverse=True)
-            sel_anio = st.selectbox("Año", anios)
-        with f2:
-            m_disp = sorted(df_h[df_h['Fecha_dt'].dt.year == sel_anio]['Fecha_dt'].dt.month.unique())
-            sel_mes = st.selectbox("Mes", m_disp, format_func=lambda x: meses_dict[x])
+        df_f = df_h[df_h['Fecha_dt'].dt.year == sel_anio]
+        st.dataframe(df_f.drop(columns=['Fecha_dt']), use_container_width=True)
         
-        df_filtrado = df_h[(df_h['Fecha_dt'].dt.year == sel_anio) & (df_h['Fecha_dt'].dt.month == sel_mes)]
-        st.dataframe(df_filtrado.drop(columns=['Fecha_dt']), use_container_width=True)
-        
-        csv = df_filtrado.drop(columns=['Fecha_dt']).to_csv(index=False).encode('utf-8')
-        st.download_button("📥 Descargar Reporte CSV", csv, f"Reporte_{meses_dict[sel_mes]}.csv", "text/csv")
+        csv = df_f.to_csv(index=False).encode('utf-8')
+        st.download_button("📥 Descargar Reporte", csv, f"Reporte_{sel_anio}.csv", "text/csv")
