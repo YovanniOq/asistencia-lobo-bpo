@@ -42,7 +42,7 @@ url_hoja = st.secrets["connections"]["gsheets"]["spreadsheet"]
 if "reset_key" not in st.session_state: st.session_state.reset_key = 0
 if "mostrar_obs" not in st.session_state: st.session_state.mostrar_obs = False
 
-# --- 3. FUNCIÓN DE GRABACIÓN (PERSISTENCIA GARANTIZADA) ---
+# --- 3. FUNCIÓN DE GRABACIÓN ---
 def registrar_en_nube(dni, nombre, tipo, obs=""):
     try:
         ahora = obtener_hora_peru()
@@ -75,7 +75,7 @@ def registrar_en_nube(dni, nombre, tipo, obs=""):
     except Exception as e:
         st.error(f"Error: {e}")
 
-# --- 4. INTERFAZ (CABECERA ALINEADA Y LOGO GRANDE) ---
+# --- 4. INTERFAZ (CABECERA ALINEADA) ---
 modo = "Marcación"
 with st.sidebar:
     st.title("🐺 Gestión Lobo")
@@ -84,16 +84,12 @@ with st.sidebar:
         if clave == "Lobo2026":
             modo = "Admin"
 
-# Columnas para centrar logo y título
 c_izq, c_logo, c_tit, c_der = st.columns([1, 3, 6, 1])
-
 with c_logo:
     if os.path.exists("logo_lobo.png"):
-        # Bajamos un poco el logo para centrarlo con el texto
         st.write("") 
         st.write("")
         st.image("logo_lobo.png", width=300)
-
 with c_tit:
     st.markdown("""
         <div style='padding-top: 15px;'>
@@ -119,7 +115,6 @@ if modo == "Marcación":
             nombre = emp.iloc[0]['Nombre']
             st.info(f"👤 TRABAJADOR: {nombre}")
             
-            # Recuperar estado de la nube (Previene duplicados al reabrir navegador)
             df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
             hoy = obtener_hora_peru().strftime("%Y-%m-%d")
             df_h['DNI'] = df_h['DNI'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
@@ -149,16 +144,27 @@ if modo == "Marcación":
         else:
             st.error("DNI no registrado.")
 
-else: # --- MÓDULO ADMIN ---
-    st.header("📋 Historial Administrativo")
+else: # --- ADMIN RESTAURADO CON MES Y TOTAL ---
+    st.header("📋 Panel de Administración Lobo")
     df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
     if not df_h.empty:
         df_h['Fecha_dt'] = pd.to_datetime(df_h['Fecha'], errors='coerce')
-        anios = sorted(df_h['Fecha_dt'].dt.year.unique(), reverse=True)
-        sel_anio = st.selectbox("Año", anios)
+        meses_dict = {1:"Enero", 2:"Febrero", 3:"Marzo", 4:"Abril", 5:"Mayo", 6:"Junio", 
+                      7:"Julio", 8:"Agosto", 9:"Septiembre", 10:"Octubre", 11:"Noviembre", 12:"Diciembre"}
         
-        df_f = df_h[df_h['Fecha_dt'].dt.year == sel_anio]
+        f1, f2, _ = st.columns([1, 1, 2])
+        with f1:
+            anios = sorted(df_h['Fecha_dt'].dt.year.unique(), reverse=True)
+            sel_anio = st.selectbox("Año", anios)
+        with f2:
+            m_disp = sorted(df_h[df_h['Fecha_dt'].dt.year == sel_anio]['Fecha_dt'].dt.month.unique())
+            sel_mes = st.selectbox("Mes", m_disp, format_func=lambda x: meses_dict[x])
+        
+        df_f = df_h[(df_h['Fecha_dt'].dt.year == sel_anio) & (df_h['Fecha_dt'].dt.month == sel_mes)]
         st.dataframe(df_f.drop(columns=['Fecha_dt']), use_container_width=True)
         
-        csv = df_f.to_csv(index=False).encode('utf-8')
-        st.download_button("📥 Descargar Reporte CSV", csv, f"Reporte_{sel_anio}.csv", "text/csv")
+        total_desc = pd.to_numeric(df_f['Descuento_Soles'], errors='coerce').sum()
+        st.metric(f"Total Descuentos - {meses_dict[sel_mes]}", f"S/ {total_desc:.2f}")
+        
+        csv = df_f.drop(columns=['Fecha_dt']).to_csv(index=False).encode('utf-8')
+        st.download_button("📥 Descargar Reporte CSV", csv, f"Reporte_{meses_dict[sel_mes]}.csv", "text/csv")
