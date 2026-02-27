@@ -1,3 +1,4 @@
 pandas
 st-gsheets-connection
 shillelagh
+ip install Pillow
