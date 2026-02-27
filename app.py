@@ -4,7 +4,6 @@ import pandas as pd
 from datetime import datetime, timedelta, timezone
 import os
 import time
-import base64
 import streamlit.components.v1 as components
 
 # --- 1. CONFIGURACIÓN ---
@@ -12,6 +11,25 @@ st.set_page_config(page_title="Asistencia Lobo", layout="wide")
 COSTO_MINUTO = 0.15  
 HORA_ENTRADA_OFICIAL = "08:00:00" 
 TOLERANCIA_MENSUAL = 30 
+
+# --- ESTILOS CSS PARA EL FONDO DE OFICINA ---
+st.markdown("""
+    <style>
+    .stApp {
+        background-image: linear-gradient(rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.85)), 
+        url("https://images.unsplash.com/photo-1497366216548-37526070297c?ixlib=rb-1.2.1&auto=format&fit=crop&w=1350&q=80");
+        background-size: cover;
+        background-attachment: fixed;
+    }
+    .main .block-container {
+        background-color: rgba(255, 255, 255, 0.9);
+        padding: 3rem;
+        border-radius: 20px;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        margin-top: 2rem;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
 def obtener_hora_peru():
     return datetime.now(timezone.utc) - timedelta(hours=5)
@@ -74,8 +92,7 @@ def registrar_en_nube(dni, nombre, tipo):
 # --- 4. INTERFAZ ---
 modo = "Marcación"
 with st.sidebar:
-    # --- EL LOBO AZUL PERFECTO ANTEPUESTO ---
-    # Usamos la técnica de ventana CSS para que el lobo se vea impecable
+    # --- EL LOBO AZUL ANTEPUESTO (CORREGIDO) ---
     if os.path.exists("logo_lobo.png"):
         st.markdown(f"""
             <div style='display: flex; align-items: center; gap: 12px; margin-bottom: 25px;'>
@@ -83,7 +100,7 @@ with st.sidebar:
                     <img src='https://raw.githubusercontent.com/Yovanni/asistencia/main/logo_lobo.png' 
                          style='width: 210px; margin-left: 155px; margin-top: -5px;'>
                 </div>
-                <h1 style='color: #1E3A8A; font-size: 26px; margin: 0; white-space: nowrap; font-family: sans-serif;'>Gestión Lobo</h1>
+                <h1 style='color: #1E3A8A; font-size: 26px; margin: 0; white-space: nowrap;'>Gestión Lobo</h1>
             </div>
         """, unsafe_allow_html=True)
     else:
@@ -94,7 +111,7 @@ with st.sidebar:
         clave = st.text_input("Contraseña:", type="password")
         if clave == "Lobo2026": modo = "Admin"
 
-# Cabecera principal (RESTAURADA A TU DISEÑO ORIGINAL)
+# Cabecera principal
 c_izq, c_logo, c_tit, c_der = st.columns([1, 3, 6, 1])
 with c_logo:
     if os.path.exists("logo_lobo.png"):
@@ -114,7 +131,7 @@ if modo == "Marcación":
     st.write("### DIGITE SU DNI:")
     c_dni, _ = st.columns([1, 4])
     with c_dni:
-        # SE MANTIENEN LOS 12 CARACTERES
+        # SE MANTIENE EL DNI DE 12 CARACTERES
         dni_in = st.text_input("DNI", key=f"dni_{st.session_state.reset_key}", label_visibility="collapsed", max_chars=12)
 
     if dni_in:
@@ -136,7 +153,6 @@ if modo == "Marcación":
         else:
             st.error("DNI no registrado.")
 else:
-    # REPORTE ADMIN
     st.header("📋 Auditoría de Planilla")
     df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
     st.dataframe(df_h, use_container_width=True)
