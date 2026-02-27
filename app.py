@@ -4,7 +4,7 @@ import pandas as pd
 from datetime import datetime, timedelta, timezone
 import os
 import time
-import base64  # Para incrustar la imagen directamente
+import base64
 import streamlit.components.v1 as components
 
 # --- 1. CONFIGURACIÓN ---
@@ -16,7 +16,7 @@ TOLERANCIA_MENSUAL = 30 #
 def obtener_hora_peru():
     return datetime.now(timezone.utc) - timedelta(hours=5)
 
-# Función para convertir imagen local a Base64
+# Función infalible para convertir imagen local a Base64
 def get_base64_image(image_path):
     with open(image_path, "rb") as img_file:
         return base64.b64encode(img_file.read()).decode()
@@ -83,21 +83,22 @@ def registrar_en_nube(dni, nombre, tipo, obs=""):
 # --- 4. INTERFAZ ---
 modo = "Marcación"
 with st.sidebar:
-    # --- EL LOBO AL COSTADO DE GESTIÓN LOBO (MÉTODO BASE64) ---
+    # --- SOLO EL LOBO CENTRADO ARRIBA DEL TEXTO ---
     if os.path.exists("logo_lobo.png"):
         img_64 = get_base64_image("logo_lobo.png")
         st.markdown(f"""
-            <div style='display: flex; align-items: center; margin-bottom: 20px;'>
-                <div style='width: 45px; height: 45px; overflow: hidden; margin-right: 10px;'>
+            <div style='text-align: center; margin-bottom: 10px;'>
+                <div style='width: 80px; height: 80px; overflow: hidden; margin: 0 auto;'>
                     <img src='data:image/png;base64,{img_64}' 
-                         style='width: 210px; margin-left: -2px; margin-top: -5px;'>
+                         style='width: 380px; margin-left: -5px; margin-top: -10px;'>
                 </div>
-                <h1 style='color: #1E3A8A; font-size: 26px; margin: 0;'>Gestión Lobo</h1>
+                <h2 style='color: #1E3A8A; margin-top: 10px; font-size: 24px;'>Gestión Lobo</h2>
             </div>
         """, unsafe_allow_html=True)
     else:
         st.title("Gestión Lobo")
     
+    st.write("---")
     if st.checkbox("Acceso Administrador"):
         clave = st.text_input("Contraseña:", type="password")
         if clave == "Lobo2026":
@@ -127,7 +128,7 @@ if modo == "Marcación":
 
     if dni_in:
         st.cache_data.clear()
-        df_emp = pd.read_csv("employees.csv", dtype={'DNI': str})
+        df_emp = pd.read_csv("empleados.csv", dtype={'DNI': str})
         emp = df_emp[df_emp['DNI'] == str(dni_in).strip()]
         
         if not emp.empty:
@@ -158,7 +159,7 @@ if modo == "Marcación":
             if st.session_state.mostrar_obs:
                 st.divider()
                 motivo = st.text_input("MOTIVO DEL PERMISO (ENTER):")
-                if motivo: registrar_en_nube(dni_in, nombre, "SALIDA_PERMISO", obs=motivo)
+                if motivo: registrar_en_nube(dni_in, nombre, "SALIDA_PER_MISO", obs=motivo)
         else:
             st.error("DNI no registrado.")
 
@@ -181,7 +182,6 @@ else: # --- ADMIN ---
         
         df_mes = df_h[(df_h['Fecha_dt'].dt.year == sel_anio) & (df_h['Fecha_dt'].dt.month == sel_mes)].copy()
 
-        # Auditoría Mensual Acumulada
         resumen_mensual = df_mes.groupby('Nombre')['Tardanza_Min'].sum().reset_index()
         resumen_mensual['Excedente_Min'] = resumen_mensual['Tardanza_Min'].apply(lambda x: (x - TOLERANCIA_MENSUAL) if x > TOLERANCIA_MENSUAL else 0)
         resumen_mensual['Descuento_Soles'] = resumen_mensual['Excedente_Min'] * COSTO_MINUTO
@@ -195,7 +195,7 @@ else: # --- ADMIN ---
         st.subheader("Historial de Marcaciones")
         st.dataframe(df_final.drop(columns=['Fecha_dt']), use_container_width=True)
         
-        st.subheader("💰 Resumen de Auditoría (Bolsa 30 min)")
+        st.subheader("💰 Auditoría de Planilla (Bolsa 30 min)")
         st.table(resumen_mensual)
 
         total_final = resumen_mensual['Descuento_Soles'].sum()
