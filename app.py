@@ -4,16 +4,22 @@ import pandas as pd
 from datetime import datetime, timedelta, timezone
 import os
 import time
+import base64  # Para incrustar la imagen directamente
 import streamlit.components.v1 as components
 
 # --- 1. CONFIGURACIÓN ---
 st.set_page_config(page_title="Asistencia Lobo", layout="wide")
 COSTO_MINUTO = 0.15  
 HORA_ENTRADA_OFICIAL = "08:00:00" 
-TOLERANCIA_MENSUAL = 30 
+TOLERANCIA_MENSUAL = 30 #
 
 def obtener_hora_peru():
     return datetime.now(timezone.utc) - timedelta(hours=5)
+
+# Función para convertir imagen local a Base64
+def get_base64_image(image_path):
+    with open(image_path, "rb") as img_file:
+        return base64.b64encode(img_file.read()).decode()
 
 # --- JAVASCRIPT DE FOCO INTELIGENTE ---
 components.html("""
@@ -64,7 +70,7 @@ def registrar_en_nube(dni, nombre, tipo, obs=""):
         st.cache_data.clear()
         df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
         df_final = pd.concat([df_h, nueva_fila], ignore_index=True)
-        conn.update(spreadsheet=url_ho_ja, worksheet="Sheet1", data=df_final)
+        conn.update(spreadsheet=url_hoja, worksheet="Sheet1", data=df_final)
         
         st.success(f"✅ {tipo} REGISTRADO")
         time.sleep(1.2)
@@ -77,17 +83,20 @@ def registrar_en_nube(dni, nombre, tipo, obs=""):
 # --- 4. INTERFAZ ---
 modo = "Marcación"
 with st.sidebar:
-    # --- EL LOBO AL COSTADO DE GESTIÓN LOBO (SIN LIBRERÍAS EXTRAS) ---
-    # Usamos un contenedor con 'overflow: hidden' para mostrar solo el inicio del logo
-    st.markdown("""
-        <div style='display: flex; align-items: center; margin-bottom: 20px;'>
-            <div style='width: 45px; height: 45px; overflow: hidden; border-radius: 5px; margin-right: 10px;'>
-                <img src='https://raw.githubusercontent.com/Yovanni/asistencia/main/logo_lobo.png' 
-                     style='width: 250px; margin-left: 0px; margin-top: -5px;'>
+    # --- EL LOBO AL COSTADO DE GESTIÓN LOBO (MÉTODO BASE64) ---
+    if os.path.exists("logo_lobo.png"):
+        img_64 = get_base64_image("logo_lobo.png")
+        st.markdown(f"""
+            <div style='display: flex; align-items: center; margin-bottom: 20px;'>
+                <div style='width: 45px; height: 45px; overflow: hidden; margin-right: 10px;'>
+                    <img src='data:image/png;base64,{img_64}' 
+                         style='width: 210px; margin-left: -2px; margin-top: -5px;'>
+                </div>
+                <h1 style='color: #1E3A8A; font-size: 26px; margin: 0;'>Gestión Lobo</h1>
             </div>
-            <h1 style='color: #1E3A8A; font-size: 26px; margin: 0;'>Gestión Lobo</h1>
-        </div>
-    """, unsafe_allow_html=True)
+        """, unsafe_allow_html=True)
+    else:
+        st.title("Gestión Lobo")
     
     if st.checkbox("Acceso Administrador"):
         clave = st.text_input("Contraseña:", type="password")
@@ -118,7 +127,7 @@ if modo == "Marcación":
 
     if dni_in:
         st.cache_data.clear()
-        df_emp = pd.read_csv("empleados.csv", dtype={'DNI': str})
+        df_emp = pd.read_csv("employees.csv", dtype={'DNI': str})
         emp = df_emp[df_emp['DNI'] == str(dni_in).strip()]
         
         if not emp.empty:
