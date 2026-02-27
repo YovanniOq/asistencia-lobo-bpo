@@ -12,22 +12,24 @@ COSTO_MINUTO = 0.15
 HORA_ENTRADA_OFICIAL = "08:00:00" 
 TOLERANCIA_MENSUAL = 30 
 
-# --- ESTILOS CSS PARA EL FONDO DE OFICINA ---
+# --- ESTILOS CSS: FONDO DE OFICINA + MENÚ LATERAL ---
 st.markdown("""
     <style>
     .stApp {
-        background-image: linear-gradient(rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.85)), 
-        url("https://images.unsplash.com/photo-1497366216548-37526070297c?ixlib=rb-1.2.1&auto=format&fit=crop&w=1350&q=80");
+        background-image: linear-gradient(rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.8)), 
+        url("https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=1350&q=80");
         background-size: cover;
         background-attachment: fixed;
     }
     .main .block-container {
-        background-color: rgba(255, 255, 255, 0.9);
+        background-color: rgba(255, 255, 255, 0.95);
         padding: 3rem;
-        border-radius: 20px;
-        box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        border-radius: 15px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.15);
         margin-top: 2rem;
     }
+    .menu-item { display: flex; align-items: center; padding: 10px; border-radius: 5px; margin-bottom: 5px; color: #555; }
+    .menu-icon { margin-right: 15px; font-size: 1.2rem; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -83,28 +85,28 @@ def registrar_en_nube(dni, nombre, tipo):
         conn.update(spreadsheet=url_hoja, worksheet="Sheet1", data=df_final)
         
         st.success(f"✅ {tipo} REGISTRADO")
-        time.sleep(1.2)
-        st.session_state.reset_key += 1
-        st.rerun()
-    except Exception as e:
-        st.error(f"Error: {e}")
+        time.sleep(1.2); st.session_state.reset_key += 1; st.rerun()
+    except Exception as e: st.error(f"Error: {e}")
 
 # --- 4. INTERFAZ ---
 modo = "Marcación"
 with st.sidebar:
-    # --- EL LOBO AZUL ANTEPUESTO (CORREGIDO) ---
-    if os.path.exists("logo_lobo.png"):
-        st.markdown(f"""
-            <div style='display: flex; align-items: center; gap: 12px; margin-bottom: 25px;'>
-                <div style='width: 50px; height: 50px; overflow: hidden; display: flex; align-items: center; justify-content: center; border-radius: 5px;'>
-                    <img src='https://raw.githubusercontent.com/Yovanni/asistencia/main/logo_lobo.png' 
-                         style='width: 210px; margin-left: 155px; margin-top: -5px;'>
-                </div>
-                <h1 style='color: #1E3A8A; font-size: 26px; margin: 0; white-space: nowrap;'>Gestión Lobo</h1>
+    # CABECERA CON LOBO (SOLO ANIMAL)
+    st.markdown(f"""
+        <div style='text-align: center; margin-bottom: 25px;'>
+            <div style='width: 80px; height: 80px; overflow: hidden; margin: 0 auto;'>
+                <img src='https://raw.githubusercontent.com/Yovanni/asistencia/main/logo_lobo.png' 
+                     style='width: 380px; margin-left: 295px; margin-top: -10px;'>
             </div>
-        """, unsafe_allow_html=True)
-    else:
-        st.title("Gestión Lobo")
+            <h1 style='color: #1E3A8A; font-size: 24px; margin-top: 10px;'>Gestión Lobo</h1>
+        </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("""
+        <div class="menu-item"><span class="menu-icon">🏠</span> Inicio</div>
+        <div class="menu-item"><span class="menu-icon">📊</span> Reportes</div>
+        <div class="menu-item"><span class="menu-icon">⚙️</span> Configuración</div>
+    """, unsafe_allow_html=True)
     
     st.divider()
     if st.checkbox("Acceso Administrador"):
@@ -131,7 +133,6 @@ if modo == "Marcación":
     st.write("### DIGITE SU DNI:")
     c_dni, _ = st.columns([1, 4])
     with c_dni:
-        # SE MANTIENE EL DNI DE 12 CARACTERES
         dni_in = st.text_input("DNI", key=f"dni_{st.session_state.reset_key}", label_visibility="collapsed", max_chars=12)
 
     if dni_in:
@@ -142,17 +143,49 @@ if modo == "Marcación":
         if not emp.empty:
             nombre = emp.iloc[0]['Nombre']
             st.info(f"👤 TRABAJADOR: {nombre}")
-            
-            c1, c2 = st.columns(2)
-            with c1:
-                if st.button("📥 INGRESO", use_container_width=True):
-                    registrar_en_nube(dni_in, nombre, "INGRESO")
-            with c2:
-                if st.button("📤 SALIDA", use_container_width=True):
-                    registrar_en_nube(dni_in, nombre, "SALIDA")
-        else:
-            st.error("DNI no registrado.")
-else:
-    st.header("📋 Auditoría de Planilla")
+            c_btns = st.columns(2)
+            with c_btns[0]:
+                if st.button("📥 INGRESO", use_container_width=True): registrar_en_nube(dni_in, nombre, "INGRESO")
+            with c_btns[1]:
+                if st.button("📤 SALIDA", use_container_width=True): registrar_en_nube(dni_in, nombre, "SALIDA")
+        else: st.error("DNI no registrado.")
+
+else: # --- ADMIN: REPORTES Y TOTALES (RESTAURADO) ---
+    st.header("📋 Reporte Auditado de Asistencia")
     df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
-    st.dataframe(df_h, use_container_width=True)
+    
+    if not df_h.empty:
+        df_h['Fecha_dt'] = pd.to_datetime(df_h['Fecha'], errors='coerce')
+        meses_dict = {1:"Ene", 2:"Feb", 3:"Mar", 4:"Abr", 5:"May", 6:"Jun", 7:"Jul", 8:"Ago", 9:"Sep", 10:"Oct", 11:"Nov", 12:"Dic"}
+        
+        f1, f2, f3 = st.columns(3)
+        with f1: sel_anio = st.selectbox("Año", sorted(df_h['Fecha_dt'].dt.year.unique(), reverse=True))
+        with f2:
+            m_disp = sorted(df_h[df_h['Fecha_dt'].dt.year == sel_anio]['Fecha_dt'].dt.month.unique())
+            sel_mes = st.selectbox("Mes", m_disp, format_func=lambda x: meses_dict[x])
+        with f3:
+            nombres = sorted(df_h[(df_h['Fecha_dt'].dt.year == sel_anio) & (df_h['Fecha_dt'].dt.month == sel_mes)]['Nombre'].unique())
+            sel_nombre = st.selectbox("Trabajador", ["TODOS"] + nombres)
+        
+        df_mes = df_h[(df_h['Fecha_dt'].dt.year == sel_anio) & (df_h['Fecha_dt'].dt.month == sel_mes)].copy()
+
+        # Resumen y Totales
+        resumen = df_mes.groupby('Nombre')['Tardanza_Min'].sum().reset_index()
+        resumen['Excedente'] = resumen['Tardanza_Min'].apply(lambda x: (x - TOLERANCIA_MENSUAL) if x > TOLERANCIA_MENSUAL else 0)
+        resumen['Descuento'] = resumen['Excedente'] * COSTO_MINUTO
+
+        if sel_nombre != "TODOS":
+            df_mes = df_mes[df_mes['Nombre'] == sel_nombre]
+            resumen = resumen[resumen['Nombre'] == sel_nombre]
+
+        st.subheader("Historial Detallado")
+        st.dataframe(df_mes.drop(columns=['Fecha_dt']), use_container_width=True)
+        
+        st.subheader("💰 Resumen de Auditoría (Bolsa 30 min)")
+        st.table(resumen)
+
+        total_desc = resumen['Descuento'].sum()
+        st.metric("Total General a Descontar", f"S/ {total_desc:.2f}")
+        
+        csv = df_mes.to_csv(index=False).encode('utf-8')
+        st.download_button("📥 Descargar Reporte CSV", csv, f"Reporte_{meses_dict[sel_mes]}.csv", "text/csv")
