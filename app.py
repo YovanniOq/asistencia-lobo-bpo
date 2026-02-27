@@ -4,7 +4,6 @@ import pandas as pd
 from datetime import datetime, timedelta, timezone
 import os
 import time
-import base64
 import streamlit.components.v1 as components
 
 # --- 1. CONFIGURACIÓN ---
@@ -74,23 +73,26 @@ def registrar_en_nube(dni, nombre, tipo):
 # --- 4. INTERFAZ ---
 modo = "Marcación"
 with st.sidebar:
-    # --- ISOTIPO DEL LOBO ANTEPUESTO A GESTIÓN LOBO ---
-    # Usamos la imagen que pasaste convertida a Base64 para que no falle
-    lobo_base64 = "iVBORw0KGgoAAAANSUhEUgAAAGQAAACCCAMAAACp8v9fAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAAlQTFRF////3+DfpKSkqf99AAAAAAAAsX5zVAAAAAN0Uk5T//8A18o9BAAAAI9JREFUeNrs2MENwCAQA0FX6L9pE0hIn70DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DAgYAn/YCH9mPqXMAAAAASUVORK5CYII="
-    
-    st.markdown(f"""
-        <div style='display: flex; align-items: center; gap: 10px; margin-bottom: 20px;'>
-            <img src='data:image/png;base64,{lobo_base64}' style='width: 45px; height: auto;'>
-            <h1 style='color: #1E3A8A; font-size: 24px; margin: 0; white-space: nowrap;'>Gestión Lobo</h1>
-        </div>
-    """, unsafe_allow_html=True)
+    # --- VENTANA CSS: MUESTRA SOLO EL LOBO DEL LOGO ORIGINAL ---
+    if os.path.exists("logo_lobo.png"):
+        st.markdown(f"""
+            <div style='display: flex; align-items: center; gap: 10px; margin-bottom: 20px;'>
+                <div style='width: 45px; height: 45px; overflow: hidden; display: flex; align-items: center; justify-content: center;'>
+                    <img src='https://raw.githubusercontent.com/Yovanni/asistencia/main/logo_lobo.png' 
+                         style='width: 200px; margin-left: 145px; margin-top: -5px;'>
+                </div>
+                <h1 style='color: #1E3A8A; font-size: 24px; margin: 0; white-space: nowrap;'>Gestión Lobo</h1>
+            </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.title("Gestión Lobo")
     
     st.divider()
     if st.checkbox("Acceso Administrador"):
         clave = st.text_input("Contraseña:", type="password")
         if clave == "Lobo2026": modo = "Admin"
 
-# Cabecera principal centrada (Como estaba originalmente)
+# Cabecera principal (Tal como la tenías)
 c_izq, c_logo, c_tit, c_der = st.columns([1, 3, 6, 1])
 with c_logo:
     if os.path.exists("logo_lobo.png"):
@@ -110,7 +112,7 @@ if modo == "Marcación":
     st.write("### DIGITE SU DNI:")
     c_dni, _ = st.columns([1, 4])
     with c_dni:
-        # SE MANTIENEN LOS 12 CARACTERES ORIGINALES
+        # RESPETADO EL LÍMITE DE 12 CARACTERES
         dni_in = st.text_input("DNI", key=f"dni_{st.session_state.reset_key}", label_visibility="collapsed", max_chars=12)
 
     if dni_in:
@@ -120,7 +122,7 @@ if modo == "Marcación":
         
         if not emp.empty:
             nombre = emp.iloc[0]['Nombre']
-            st.info(f"👤 TRABAJADOR DETECTADO: {nombre}")
+            st.info(f"👤 TRABAJADOR: {nombre}")
             
             c1, c2 = st.columns(2)
             with c1:
@@ -131,8 +133,3 @@ if modo == "Marcación":
                     registrar_en_nube(dni_in, nombre, "SALIDA")
         else:
             st.error("DNI no registrado.")
-else:
-    # Vista Admin simple para no mover nada
-    st.header("📋 Reporte de Asistencia")
-    df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
-    st.dataframe(df_h, use_container_width=True)
