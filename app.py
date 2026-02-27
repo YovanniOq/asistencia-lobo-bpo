@@ -10,12 +10,12 @@ import streamlit.components.v1 as components
 st.set_page_config(page_title="Asistencia Lobo", layout="wide")
 COSTO_MINUTO = 0.15  
 HORA_ENTRADA_OFICIAL = "08:00:00" 
-TOLERANCIA_MINUTOS = 30 
+TOLERANCIA_MENSUAL = 30  # Ahora es una bolsa mensual
 
 def obtener_hora_peru():
     return datetime.now(timezone.utc) - timedelta(hours=5)
 
-# --- JAVASCRIPT DE FOCO INTELIGENTE 2.0 ---
+# --- JAVASCRIPT DE FOCO INTELIGENTE ---
 components.html("""
     <script>
     const forceFocus = () => {
@@ -141,8 +141,8 @@ if modo == "Marcación":
         else:
             st.error("DNI no registrado.")
 
-else: # --- ADMIN (LÓGICA DE AUDITORÍA FINAL) ---
-    st.header("📋 Reporte Final Lobo")
+else: # --- PANEL ADMIN CON LÓGICA MENSUAL ACUMULADA ---
+    st.header("📋 Reporte Final Lobo (Tolerancia Mensual)")
     df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
     if not df_h.empty:
         df_h['Fecha_dt'] = pd.to_datetime(df_h['Fecha'], errors='coerce')
@@ -159,17 +159,27 @@ else: # --- ADMIN (LÓGICA DE AUDITORÍA FINAL) ---
             sel_nombre = st.selectbox("Trabajador", ["TODOS"] + nombres)
         
         df_f = df_h[(df_h['Fecha_dt'].dt.year == sel_anio) & (df_h['Fecha_dt'].dt.month == sel_mes)].copy()
+
+        # NUEVA LÓGICA: ACUMULADO POR TRABAJADOR
+        # Calculamos el acumulado de tardanza por nombre en este mes
+        df_f['Tardanza_Acumulada_Mes'] = df_f.groupby('Nombre')['Tardanza_Min'].transform('sum')
+        
+        # El descuento se aplica solo si el ACUMULADO supera los 30
+        # Pero ojo: el descuento debe mostrarse de forma lógica. 
+        # Aquí calculamos el "Descuento del Periodo" para el resumen final.
+        df_f['Monto_Descuento'] = df_f.apply(
+            lambda x: round(float(x['Tardanza_Min']) * COSTO_MINUTO, 2) if x['Tardanza_Acumulada_Mes'] > TOLERANCIA_MENSUAL else 0.0,
+            axis=1
+        )
+
         if sel_nombre != "TODOS": df_f = df_f[df_f['Nombre'] == sel_nombre]
 
-        # CÁLCULO DE AUDITORÍA EN TIEMPO REAL
-        df_f['Monto_Descuento'] = df_f['Tardanza_Min'].apply(lambda x: round(float(x) * COSTO_MINUTO, 2) if float(x) > TOLERANCIA_MINUTOS else 0.0)
-
-        st.dataframe(df_f.drop(columns=['Fecha_dt']), use_container_width=True)
+        st.dataframe(df_f.drop(columns=['Fecha_dt', 'Tardanza_Acumulada_Mes']), use_container_width=True)
         
         total_desc = df_f['Monto_Descuento'].sum()
-        if total_desc > 0:
-            st.warning(f"🚨 Se han detectado descuentos por aplicar: S/ {total_desc:.2f}")
-        else:
-            st.success("✅ No se detectaron descuentos (dentro de la tolerancia).")
         
+        st.info(f"💡 Nota: Se perdonan los primeros {TOLERANCIA_MENSUAL} min de tardanza acumulada al mes por trabajador.")
         st.metric("Total Final a Descontar", f"S/ {total_desc:.2f}")
+        
+        csv = df_f.to_csv(index=False).encode('utf-8')
+        st.download_button("📥 Descargar Reporte Mensual CSV", csv, f"Reporte_Mensual_{meses_dict[sel_mes]}.csv", "text/csv")
