@@ -2,7 +2,6 @@ import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 from datetime import datetime, timedelta, timezone
-from PIL import Image
 import os
 import time
 import streamlit.components.v1 as components
@@ -12,23 +11,6 @@ st.set_page_config(page_title="Asistencia Lobo", layout="wide")
 COSTO_MINUTO = 0.15  
 HORA_ENTRADA_OFICIAL = "08:00:00" 
 TOLERANCIA_MENSUAL = 30 
-
-# --- RECORRE QUIRÚRGICO DEL ISOTIPO (EL LOBO) ---
-def preparar_isotipo():
-    if os.path.exists("logo_lobo.png"):
-        try:
-            img = Image.open("logo_lobo.png")
-            ancho, alto = img.size
-            # Recortamos solo el área del lobo azul (aprox el 15% inicial)
-            # (izquierda, arriba, derecha, abajo)
-            lobo_solo = img.crop((0, 0, int(ancho * 0.15), alto)) 
-            lobo_solo.save("solo_lobo_icon.png")
-            return True
-        except Exception:
-            return False
-    return False
-
-preparar_isotipo()
 
 def obtener_hora_peru():
     return datetime.now(timezone.utc) - timedelta(hours=5)
@@ -82,7 +64,7 @@ def registrar_en_nube(dni, nombre, tipo, obs=""):
         st.cache_data.clear()
         df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
         df_final = pd.concat([df_h, nueva_fila], ignore_index=True)
-        conn.update(spreadsheet=url_hoja, worksheet="Sheet1", data=df_final)
+        conn.update(spreadsheet=url_ho_ja, worksheet="Sheet1", data=df_final)
         
         st.success(f"✅ {tipo} REGISTRADO")
         time.sleep(1.2)
@@ -95,21 +77,24 @@ def registrar_en_nube(dni, nombre, tipo, obs=""):
 # --- 4. INTERFAZ ---
 modo = "Marcación"
 with st.sidebar:
-    # --- CABECERA DE BARRA LATERAL: LOBO + GESTIÓN JUNTOS ---
-    c1, c2 = st.columns([0.2, 0.8]) # Espacio más ajustado para que estén pegados
-    with c1:
-        if os.path.exists("solo_lobo_icon.png"):
-            st.image("solo_lobo_icon.png", use_container_width=True)
-    with c2:
-        st.markdown("<h3 style='color: #1E3A8A; margin: 0; padding-top: 8px; font-weight: bold;'>Gestión Lobo</h3>", unsafe_allow_html=True)
+    # --- EL LOBO AL COSTADO DE GESTIÓN LOBO (SIN LIBRERÍAS EXTRAS) ---
+    # Usamos un contenedor con 'overflow: hidden' para mostrar solo el inicio del logo
+    st.markdown("""
+        <div style='display: flex; align-items: center; margin-bottom: 20px;'>
+            <div style='width: 45px; height: 45px; overflow: hidden; border-radius: 5px; margin-right: 10px;'>
+                <img src='https://raw.githubusercontent.com/Yovanni/asistencia/main/logo_lobo.png' 
+                     style='width: 250px; margin-left: 0px; margin-top: -5px;'>
+            </div>
+            <h1 style='color: #1E3A8A; font-size: 26px; margin: 0;'>Gestión Lobo</h1>
+        </div>
+    """, unsafe_allow_html=True)
     
-    st.divider()
     if st.checkbox("Acceso Administrador"):
         clave = st.text_input("Contraseña:", type="password")
         if clave == "Lobo2026":
             modo = "Admin"
 
-# --- CABECERA PRINCIPAL CENTRADA ---
+# Cabecera principal centrada
 c_izq, c_logo, c_tit, c_der = st.columns([1, 3, 6, 1])
 with c_logo:
     if os.path.exists("logo_lobo.png"):
@@ -201,7 +186,7 @@ else: # --- ADMIN ---
         st.subheader("Historial de Marcaciones")
         st.dataframe(df_final.drop(columns=['Fecha_dt']), use_container_width=True)
         
-        st.subheader("💰 Resumen de Auditoría (Bolsa Mensual 30 min)")
+        st.subheader("💰 Resumen de Auditoría (Bolsa 30 min)")
         st.table(resumen_mensual)
 
         total_final = resumen_mensual['Descuento_Soles'].sum()
