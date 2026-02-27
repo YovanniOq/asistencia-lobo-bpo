@@ -2,6 +2,7 @@ import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 from datetime import datetime, timedelta, timezone
+from PIL import Image  # Para el recorte automático
 import os
 import time
 import streamlit.components.v1 as components
@@ -10,7 +11,24 @@ import streamlit.components.v1 as components
 st.set_page_config(page_title="Asistencia Lobo", layout="wide")
 COSTO_MINUTO = 0.15  
 HORA_ENTRADA_OFICIAL = "08:00:00" 
-TOLERANCIA_MENSUAL = 30 #
+TOLERANCIA_MENSUAL = 30 
+
+# --- RECORTE AUTOMÁTICO DEL LOBO PARA EL MENÚ ---
+def preparar_isotipo():
+    if os.path.exists("logo_lobo.png"):
+        try:
+            img = Image.open("logo_lobo.png")
+            # Recorte: (izquierda, arriba, derecha, abajo)
+            # Ajustamos para tomar solo la parte del lobo azul (aprox el 25% izquierdo)
+            ancho, alto = img.size
+            lobo_solo = img.crop((0, 0, ancho * 0.28, alto)) 
+            lobo_solo.save("solo_lobo_icon.png")
+            return True
+        except:
+            return False
+    return False
+
+preparar_isotipo()
 
 def obtener_hora_peru():
     return datetime.now(timezone.utc) - timedelta(hours=5)
@@ -77,13 +95,11 @@ def registrar_en_nube(dni, nombre, tipo, obs=""):
 # --- 4. INTERFAZ ---
 modo = "Marcación"
 with st.sidebar:
-    # DISEÑO COMPACTO: LOBO + TEXTO JUNTOS
-    # Creamos dos columnas muy pegadas para el logo y el texto
+    # MENÚ LATERAL: SOLO EL LOBO RECORTADO + TEXTO
     c1, c2 = st.columns([0.3, 1])
     with c1:
-        # Intentamos cargar el logo (asegúrate que el archivo se llame logo_lobo.png)
-        if os.path.exists("logo_lobo.png"):
-            st.image("logo_lobo.png", use_container_width=True)
+        if os.path.exists("solo_lobo_icon.png"):
+            st.image("solo_lobo_icon.png", use_container_width=True)
     with c2:
         st.markdown("<h2 style='color: #1E3A8A; margin: 0; padding-top: 5px; white-space: nowrap;'>Gestión Lobo</h2>", unsafe_allow_html=True)
     
@@ -93,7 +109,7 @@ with st.sidebar:
         if clave == "Lobo2026":
             modo = "Admin"
 
-# Cabecera principal centrada
+# Cabecera principal: LOGO COMPLETO CENTRADO
 c_izq, c_logo, c_tit, c_der = st.columns([1, 3, 6, 1])
 with c_logo:
     if os.path.exists("logo_lobo.png"):
@@ -121,7 +137,7 @@ if modo == "Marcación":
         emp = df_emp[df_emp['DNI'] == str(dni_in).strip()]
         
         if not emp.empty:
-            nombre = emp.iloc[0]['Nombre'] #
+            nombre = emp.iloc[0]['Nombre']
             st.info(f"👤 TRABAJADOR: {nombre}")
             df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
             hoy = obtener_hora_peru().strftime("%Y-%m-%d")
@@ -148,7 +164,7 @@ if modo == "Marcación":
             if st.session_state.mostrar_obs:
                 st.divider()
                 motivo = st.text_input("MOTIVO DEL PERMISO (ENTER):")
-                if motivo: registrar_en_nube(dni_in, nombre, "SALIDA_PERMISO", obs=motivo)
+                if motivo: registrar_en_nube(dni_in, nombre, "SALIDA_PER_MISO", obs=motivo)
         else:
             st.error("DNI no registrado.")
 
@@ -171,7 +187,7 @@ else: # --- ADMIN ---
         
         df_mes = df_h[(df_h['Fecha_dt'].dt.year == sel_anio) & (df_h['Fecha_dt'].dt.month == sel_mes)].copy()
 
-        # Lógica de Auditoría Mensual
+        # Auditoría Mensual
         resumen_mensual = df_mes.groupby('Nombre')['Tardanza_Min'].sum().reset_index()
         resumen_mensual['Excedente_Min'] = resumen_mensual['Tardanza_Min'].apply(lambda x: (x - TOLERANCIA_MENSUAL) if x > TOLERANCIA_MENSUAL else 0)
         resumen_mensual['Descuento_Soles'] = resumen_mensual['Excedente_Min'] * COSTO_MINUTO
