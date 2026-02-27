@@ -10,12 +10,12 @@ import streamlit.components.v1 as components
 st.set_page_config(page_title="Asistencia Lobo", layout="wide")
 COSTO_MINUTO = 0.15  
 HORA_ENTRADA_OFICIAL = "08:00:00" 
-TOLERANCIA_MENSUAL = 30  # Bolsa de 30 minutos al mes
+TOLERANCIA_MENSUAL = 30 
 
 def obtener_hora_peru():
     return datetime.now(timezone.utc) - timedelta(hours=5)
 
-# --- JAVASCRIPT DE FOCO INTELIGENTE 2.0 ---
+# --- JAVASCRIPT DE FOCO INTELIGENTE ---
 components.html("""
     <script>
     const forceFocus = () => {
@@ -77,16 +77,10 @@ def registrar_en_nube(dni, nombre, tipo, obs=""):
 # --- 4. INTERFAZ ---
 modo = "Marcación"
 with st.sidebar:
-    # CABECERA PERSONALIZADA: LOGO A LA IZQUIERDA DEL TEXTO
+    # Mostramos el logo y el título en la barra lateral
     if os.path.exists("logo_lobo.png"):
-        st.markdown(f"""
-            <div style='display: flex; align-items: center; gap: 10px; margin-bottom: 20px;'>
-                <img src='file/logo_lobo.png' width='50'>
-                <h2 style='color: #1E3A8A; margin: 0; font-size: 24px;'>Gestión Lobo</h2>
-            </div>
-        """, unsafe_allow_html=True)
-    else:
-        st.title("Gestión Lobo")
+        st.image("logo_lobo.png", width=150)
+    st.title("Gestión Lobo")
     
     if st.checkbox("Acceso Administrador"):
         clave = st.text_input("Contraseña:", type="password")
@@ -100,7 +94,7 @@ with c_logo:
         st.write(""); st.write("")
         st.image("logo_lobo.png", width=300)
 with c_tit:
-    st.markdown("""
+    st.markdown(f"""
         <div style='padding-top: 15px;'>
             <h1 style='color: #1E3A8A; font-size: 50px; margin-bottom: 0px;'>Marcación Sr. Lobo</h1>
             <h3 style='color: #444; font-size: 26px; margin-top: -10px;'>Sr. Lobo BPO Solutions</h3>
@@ -152,7 +146,7 @@ if modo == "Marcación":
         else:
             st.error("DNI no registrado.")
 
-else: # --- ADMIN CON LÓGICA DE BOLSA MENSUAL ACUMULADA ---
+else: # --- ADMIN ---
     st.header("📋 Reporte Final Lobo")
     df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
     if not df_h.empty:
@@ -171,6 +165,25 @@ else: # --- ADMIN CON LÓGICA DE BOLSA MENSUAL ACUMULADA ---
         
         df_mes = df_h[(df_h['Fecha_dt'].dt.year == sel_anio) & (df_h['Fecha_dt'].dt.month == sel_mes)].copy()
 
-        # LÓGICA DE AUDITORÍA MENSUAL
+        # LÓGICA DE AUDITORÍA MENSUAL (CORREGIDA)
         resumen_mensual = df_mes.groupby('Nombre')['Tardanza_Min'].sum().reset_index()
-        resumen_mensual['Excedente_Min'] = resumen_mensual['Tardanza_
+        resumen_mensual['Excedente_Min'] = resumen_mensual['Tardanza_Min'].apply(lambda x: (x - TOLERANCIA_MENSUAL) if x > TOLERANCIA_MENSUAL else 0)
+        resumen_mensual['Descuento_Soles'] = resumen_mensual['Excedente_Min'] * COSTO_MINUTO
+
+        df_final = df_mes.merge(resumen_mensual[['Nombre', 'Descuento_Soles']], on='Nombre', how='left')
+
+        if sel_nombre != "TODOS":
+            df_final = df_final[df_final['Nombre'] == sel_nombre]
+            resumen_mensual = resumen_mensual[resumen_mensual['Nombre'] == sel_nombre]
+
+        st.subheader("Historial de Marcaciones")
+        st.dataframe(df_final.drop(columns=['Fecha_dt']), use_container_width=True)
+        
+        st.subheader("💰 Auditoría de Planilla (Bolsa Mensual 30 min)")
+        st.table(resumen_mensual)
+
+        total_final = resumen_mensual['Descuento_Soles'].sum()
+        st.metric("Total General a Descontar", f"S/ {total_final:.2f}")
+        
+        csv = df_final.to_csv(index=False).encode('utf-8')
+        st.download_button("📥 Descargar Reporte Auditado", csv, f"Auditoria_Lobo_{meses_dict[sel_mes]}.csv", "text/csv")
