@@ -4,6 +4,7 @@ import pandas as pd
 from datetime import datetime, timedelta, timezone
 import os
 import time
+import base64
 import streamlit.components.v1 as components
 
 # --- 1. CONFIGURACIÓN ---
@@ -73,15 +74,16 @@ def registrar_en_nube(dni, nombre, tipo):
 # --- 4. INTERFAZ ---
 modo = "Marcación"
 with st.sidebar:
-    # --- VENTANA CSS: MUESTRA SOLO EL LOBO DEL LOGO ORIGINAL ---
+    # --- EL LOBO AZUL PERFECTO ANTEPUESTO ---
+    # Usamos la técnica de ventana CSS para que el lobo se vea impecable
     if os.path.exists("logo_lobo.png"):
         st.markdown(f"""
-            <div style='display: flex; align-items: center; gap: 10px; margin-bottom: 20px;'>
-                <div style='width: 45px; height: 45px; overflow: hidden; display: flex; align-items: center; justify-content: center;'>
+            <div style='display: flex; align-items: center; gap: 12px; margin-bottom: 25px;'>
+                <div style='width: 50px; height: 50px; overflow: hidden; display: flex; align-items: center; justify-content: center; border-radius: 5px;'>
                     <img src='https://raw.githubusercontent.com/Yovanni/asistencia/main/logo_lobo.png' 
-                         style='width: 200px; margin-left: 145px; margin-top: -5px;'>
+                         style='width: 210px; margin-left: 155px; margin-top: -5px;'>
                 </div>
-                <h1 style='color: #1E3A8A; font-size: 24px; margin: 0; white-space: nowrap;'>Gestión Lobo</h1>
+                <h1 style='color: #1E3A8A; font-size: 26px; margin: 0; white-space: nowrap; font-family: sans-serif;'>Gestión Lobo</h1>
             </div>
         """, unsafe_allow_html=True)
     else:
@@ -92,7 +94,7 @@ with st.sidebar:
         clave = st.text_input("Contraseña:", type="password")
         if clave == "Lobo2026": modo = "Admin"
 
-# Cabecera principal (Tal como la tenías)
+# Cabecera principal (RESTAURADA A TU DISEÑO ORIGINAL)
 c_izq, c_logo, c_tit, c_der = st.columns([1, 3, 6, 1])
 with c_logo:
     if os.path.exists("logo_lobo.png"):
@@ -112,7 +114,7 @@ if modo == "Marcación":
     st.write("### DIGITE SU DNI:")
     c_dni, _ = st.columns([1, 4])
     with c_dni:
-        # RESPETADO EL LÍMITE DE 12 CARACTERES
+        # SE MANTIENEN LOS 12 CARACTERES
         dni_in = st.text_input("DNI", key=f"dni_{st.session_state.reset_key}", label_visibility="collapsed", max_chars=12)
 
     if dni_in:
@@ -133,3 +135,8 @@ if modo == "Marcación":
                     registrar_en_nube(dni_in, nombre, "SALIDA")
         else:
             st.error("DNI no registrado.")
+else:
+    # REPORTE ADMIN
+    st.header("📋 Auditoría de Planilla")
+    df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
+    st.dataframe(df_h, use_container_width=True)
