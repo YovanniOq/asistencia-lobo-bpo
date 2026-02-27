@@ -2,7 +2,7 @@ import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 from datetime import datetime, timedelta, timezone
-from PIL import Image  # Para el recorte automático
+from PIL import Image
 import os
 import time
 import streamlit.components.v1 as components
@@ -13,18 +13,18 @@ COSTO_MINUTO = 0.15
 HORA_ENTRADA_OFICIAL = "08:00:00" 
 TOLERANCIA_MENSUAL = 30 
 
-# --- RECORTE AUTOMÁTICO DEL LOBO PARA EL MENÚ ---
+# --- RECORRE QUIRÚRGICO DEL ISOTIPO (EL LOBO) ---
 def preparar_isotipo():
     if os.path.exists("logo_lobo.png"):
         try:
             img = Image.open("logo_lobo.png")
-            # Recorte: (izquierda, arriba, derecha, abajo)
-            # Ajustamos para tomar solo la parte del lobo azul (aprox el 25% izquierdo)
             ancho, alto = img.size
-            lobo_solo = img.crop((0, 0, ancho * 0.28, alto)) 
+            # Recortamos solo el área del lobo azul (aprox el 15% inicial)
+            # (izquierda, arriba, derecha, abajo)
+            lobo_solo = img.crop((0, 0, int(ancho * 0.15), alto)) 
             lobo_solo.save("solo_lobo_icon.png")
             return True
-        except:
+        except Exception:
             return False
     return False
 
@@ -95,13 +95,13 @@ def registrar_en_nube(dni, nombre, tipo, obs=""):
 # --- 4. INTERFAZ ---
 modo = "Marcación"
 with st.sidebar:
-    # MENÚ LATERAL: SOLO EL LOBO RECORTADO + TEXTO
-    c1, c2 = st.columns([0.3, 1])
+    # --- CABECERA DE BARRA LATERAL: LOBO + GESTIÓN JUNTOS ---
+    c1, c2 = st.columns([0.2, 0.8]) # Espacio más ajustado para que estén pegados
     with c1:
         if os.path.exists("solo_lobo_icon.png"):
             st.image("solo_lobo_icon.png", use_container_width=True)
     with c2:
-        st.markdown("<h2 style='color: #1E3A8A; margin: 0; padding-top: 5px; white-space: nowrap;'>Gestión Lobo</h2>", unsafe_allow_html=True)
+        st.markdown("<h3 style='color: #1E3A8A; margin: 0; padding-top: 8px; font-weight: bold;'>Gestión Lobo</h3>", unsafe_allow_html=True)
     
     st.divider()
     if st.checkbox("Acceso Administrador"):
@@ -109,7 +109,7 @@ with st.sidebar:
         if clave == "Lobo2026":
             modo = "Admin"
 
-# Cabecera principal: LOGO COMPLETO CENTRADO
+# --- CABECERA PRINCIPAL CENTRADA ---
 c_izq, c_logo, c_tit, c_der = st.columns([1, 3, 6, 1])
 with c_logo:
     if os.path.exists("logo_lobo.png"):
@@ -164,7 +164,7 @@ if modo == "Marcación":
             if st.session_state.mostrar_obs:
                 st.divider()
                 motivo = st.text_input("MOTIVO DEL PERMISO (ENTER):")
-                if motivo: registrar_en_nube(dni_in, nombre, "SALIDA_PER_MISO", obs=motivo)
+                if motivo: registrar_en_nube(dni_in, nombre, "SALIDA_PERMISO", obs=motivo)
         else:
             st.error("DNI no registrado.")
 
@@ -187,7 +187,7 @@ else: # --- ADMIN ---
         
         df_mes = df_h[(df_h['Fecha_dt'].dt.year == sel_anio) & (df_h['Fecha_dt'].dt.month == sel_mes)].copy()
 
-        # Auditoría Mensual
+        # Auditoría Mensual Acumulada
         resumen_mensual = df_mes.groupby('Nombre')['Tardanza_Min'].sum().reset_index()
         resumen_mensual['Excedente_Min'] = resumen_mensual['Tardanza_Min'].apply(lambda x: (x - TOLERANCIA_MENSUAL) if x > TOLERANCIA_MENSUAL else 0)
         resumen_mensual['Descuento_Soles'] = resumen_mensual['Excedente_Min'] * COSTO_MINUTO
@@ -201,7 +201,7 @@ else: # --- ADMIN ---
         st.subheader("Historial de Marcaciones")
         st.dataframe(df_final.drop(columns=['Fecha_dt']), use_container_width=True)
         
-        st.subheader("💰 Auditoría de Planilla (Bolsa Mensual 30 min)")
+        st.subheader("💰 Resumen de Auditoría (Bolsa Mensual 30 min)")
         st.table(resumen_mensual)
 
         total_final = resumen_mensual['Descuento_Soles'].sum()
