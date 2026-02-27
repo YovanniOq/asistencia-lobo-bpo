@@ -12,7 +12,7 @@ COSTO_MINUTO = 0.15
 HORA_ENTRADA_OFICIAL = "08:00:00" 
 TOLERANCIA_MENSUAL = 30 
 
-# --- ESTILOS CSS: FONDO DE OFICINA + MENÚ DECORATIVO ---
+# --- ESTILOS CSS: FONDO DE OFICINA ---
 st.markdown("""
     <style>
     .stApp {
@@ -28,17 +28,6 @@ st.markdown("""
         box-shadow: 0 10px 30px rgba(0,0,0,0.15);
         margin-top: 2rem;
     }
-    /* Estilo para los botones del menú (solo visuales) */
-    .menu-visual {
-        display: flex;
-        align-items: center;
-        padding: 12px;
-        color: #555;
-        font-family: sans-serif;
-        border-radius: 5px;
-        margin-bottom: 5px;
-    }
-    .menu-visual:hover { background-color: #f0f2f6; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -100,22 +89,15 @@ def registrar_en_nube(dni, nombre, tipo):
 # --- 4. INTERFAZ ---
 modo = "Marcación"
 with st.sidebar:
-    # --- LOBO (SOLO ANIMAL) ARRIBA DEL TÍTULO ---
+    # --- CABECERA LIMPIA: SOLO LOBO Y GESTIÓN LOBO ---
     st.markdown(f"""
-        <div style='text-align: center; margin-bottom: 20px;'>
-            <div style='width: 80px; height: 80px; overflow: hidden; margin: 0 auto; border-radius: 10px;'>
+        <div style='display: flex; align-items: center; gap: 15px; margin-bottom: 25px;'>
+            <div style='width: 55px; height: 55px; overflow: hidden; display: flex; align-items: center; justify-content: center; border-radius: 8px;'>
                 <img src='https://raw.githubusercontent.com/Yovanni/asistencia/main/logo_lobo.png' 
-                     style='width: 380px; margin-left: 295px; margin-top: -10px;'>
+                     style='width: 250px; margin-left: 185px; margin-top: -5px;'>
             </div>
-            <h1 style='color: #1E3A8A; font-size: 26px; margin-top: 10px;'>Gestión Lobo</h1>
+            <h1 style='color: #1E3A8A; font-size: 26px; margin: 0; white-space: nowrap;'>Gestión Lobo</h1>
         </div>
-    """, unsafe_allow_html=True)
-
-    # --- MENÚ DECORATIVO (BOTONES NO EJECUTABLES) ---
-    st.markdown("""
-        <div class="menu-visual">🏠 &nbsp; Inicio</div>
-        <div class="menu-visual">📊 &nbsp; Reportes</div>
-        <div class="menu-visual">⚙️ &nbsp; Configuración</div>
     """, unsafe_allow_html=True)
     
     st.divider()
@@ -143,7 +125,6 @@ if modo == "Marcación":
     st.write("### DIGITE SU DNI:")
     c_dni, _ = st.columns([1, 4])
     with c_dni:
-        # SE MANTIENE EL DNI DE 12 CARACTERES
         dni_in = st.text_input("DNI", key=f"dni_{st.session_state.reset_key}", label_visibility="collapsed", max_chars=12)
 
     if dni_in:
@@ -161,7 +142,7 @@ if modo == "Marcación":
                 if st.button("📤 SALIDA", use_container_width=True): registrar_en_nube(dni_in, nombre, "SALIDA")
         else: st.error("DNI no registrado.")
 
-else: # --- PANEL ADMIN: REPORTES, FILTROS Y TOTALES ---
+else: # --- PANEL ADMIN: REPORTES CON FILTROS Y TOTALES ---
     st.header("📋 Reporte Auditado de Asistencia")
     df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
     
@@ -180,7 +161,6 @@ else: # --- PANEL ADMIN: REPORTES, FILTROS Y TOTALES ---
         
         df_mes = df_h[(df_h['Fecha_dt'].dt.year == sel_anio) & (df_h['Fecha_dt'].dt.month == sel_mes)].copy()
 
-        # Resumen de Totales y Descuentos
         resumen = df_mes.groupby('Nombre')['Tardanza_Min'].sum().reset_index()
         resumen['Excedente'] = resumen['Tardanza_Min'].apply(lambda x: (x - TOLERANCIA_MENSUAL) if x > TOLERANCIA_MENSUAL else 0)
         resumen['Descuento'] = resumen['Excedente'] * COSTO_MINUTO
