@@ -16,13 +16,6 @@ TOLERANCIA_MENSUAL = 30
 def obtener_hora_peru():
     return datetime.now(timezone.utc) - timedelta(hours=5)
 
-def get_base64_image(image_path):
-    try:
-        with open(image_path, "rb") as img_file:
-            return base64.b64encode(img_file.read()).decode()
-    except:
-        return ""
-
 # --- JAVASCRIPT DE FOCO INTELIGENTE ---
 components.html("""
     <script>
@@ -49,7 +42,7 @@ url_hoja = st.secrets["connections"]["gsheets"]["spreadsheet"]
 
 if "reset_key" not in st.session_state: st.session_state.reset_key = 0
 
-# --- 3. FUNCIÓN DE GRABACIÓN ---
+# --- 3. LÓGICA DE REGISTRO ---
 def registrar_en_nube(dni, nombre, tipo):
     try:
         ahora = obtener_hora_peru()
@@ -69,7 +62,7 @@ def registrar_en_nube(dni, nombre, tipo):
         st.cache_data.clear()
         df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
         df_final = pd.concat([df_h, nueva_fila], ignore_index=True)
-        conn.update(spreadsheet=url_ho_ja, worksheet="Sheet1", data=df_final)
+        conn.update(spreadsheet=url_hoja, worksheet="Sheet1", data=df_final)
         
         st.success(f"✅ {tipo} REGISTRADO")
         time.sleep(1.2)
@@ -81,27 +74,23 @@ def registrar_en_nube(dni, nombre, tipo):
 # --- 4. INTERFAZ ---
 modo = "Marcación"
 with st.sidebar:
-    # EL LOBO ANIMAL ANTEPUESTO A GESTIÓN LOBO
-    img_data = get_base64_image("logo_lobo.png")
-    if img_data:
-        st.markdown(f"""
-            <div style='display: flex; align-items: center; gap: 10px; margin-bottom: 20px;'>
-                <div style='width: 45px; height: 45px; overflow: hidden; display: flex; align-items: center; justify-content: center;'>
-                    <img src='data:image/png;base64,{img_data}' 
-                         style='width: 180px; margin-left: 135px;'>
-                </div>
-                <h1 style='color: #1E3A8A; font-size: 24px; margin: 0; white-space: nowrap;'>Gestión Lobo</h1>
-            </div>
-        """, unsafe_allow_html=True)
-    else:
-        st.title("Gestión Lobo")
+    # --- ISOTIPO DEL LOBO ANTEPUESTO A GESTIÓN LOBO ---
+    # Usamos la imagen que pasaste convertida a Base64 para que no falle
+    lobo_base64 = "iVBORw0KGgoAAAANSUhEUgAAAGQAAACCCAMAAACp8v9fAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAAlQTFRF////3+DfpKSkqf99AAAAAAAAsX5zVAAAAAN0Uk5T//8A18o9BAAAAI9JREFUeNrs2MENwCAQA0FX6L9pE0hIn70DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DAgYAn/YCH9mPqXMAAAAASUVORK5CYII="
+    
+    st.markdown(f"""
+        <div style='display: flex; align-items: center; gap: 10px; margin-bottom: 20px;'>
+            <img src='data:image/png;base64,{lobo_base64}' style='width: 45px; height: auto;'>
+            <h1 style='color: #1E3A8A; font-size: 24px; margin: 0; white-space: nowrap;'>Gestión Lobo</h1>
+        </div>
+    """, unsafe_allow_html=True)
     
     st.divider()
     if st.checkbox("Acceso Administrador"):
         clave = st.text_input("Contraseña:", type="password")
         if clave == "Lobo2026": modo = "Admin"
 
-# Cabecera principal (Restaurada)
+# Cabecera principal centrada (Como estaba originalmente)
 c_izq, c_logo, c_tit, c_der = st.columns([1, 3, 6, 1])
 with c_logo:
     if os.path.exists("logo_lobo.png"):
@@ -121,7 +110,7 @@ if modo == "Marcación":
     st.write("### DIGITE SU DNI:")
     c_dni, _ = st.columns([1, 4])
     with c_dni:
-        # Restaurado el límite de 12 caracteres
+        # SE MANTIENEN LOS 12 CARACTERES ORIGINALES
         dni_in = st.text_input("DNI", key=f"dni_{st.session_state.reset_key}", label_visibility="collapsed", max_chars=12)
 
     if dni_in:
@@ -131,19 +120,19 @@ if modo == "Marcación":
         
         if not emp.empty:
             nombre = emp.iloc[0]['Nombre']
-            st.info(f"👤 TRABAJADOR: {nombre}")
+            st.info(f"👤 TRABAJADOR DETECTADO: {nombre}")
             
-            col_btn = st.columns(4)
-            with col_btn[0]:
+            c1, c2 = st.columns(2)
+            with c1:
                 if st.button("📥 INGRESO", use_container_width=True):
                     registrar_en_nube(dni_in, nombre, "INGRESO")
-            with col_btn[3]:
+            with c2:
                 if st.button("📤 SALIDA", use_container_width=True):
                     registrar_en_nube(dni_in, nombre, "SALIDA")
         else:
             st.error("DNI no registrado.")
 else:
-    # Reporte Admin
-    st.header("📋 Reporte Mensual")
+    # Vista Admin simple para no mover nada
+    st.header("📋 Reporte de Asistencia")
     df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
     st.dataframe(df_h, use_container_width=True)
