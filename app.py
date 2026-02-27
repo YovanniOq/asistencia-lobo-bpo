@@ -11,15 +11,20 @@ import streamlit.components.v1 as components
 st.set_page_config(page_title="Asistencia Lobo", layout="wide")
 COSTO_MINUTO = 0.15  
 HORA_ENTRADA_OFICIAL = "08:00:00" 
-TOLERANCIA_MENSUAL = 30 #
+TOLERANCIA_MENSUAL = 30 
 
 def obtener_hora_peru():
     return datetime.now(timezone.utc) - timedelta(hours=5)
 
-# Función para convertir imagen local a Base64 para que no falle el cargado
+# Función para convertir imagen local a Base64 y evitar fallos de carga
 def get_base64_image(image_path):
-    with open(image_path, "rb") as img_file:
-        return base64.b64encode(img_file.read()).decode()
+    try:
+        if os.path.exists(image_path):
+            with open(image_path, "rb") as img_file:
+                return base64.b64encode(img_file.read()).decode()
+    except:
+        return ""
+    return ""
 
 # --- JAVASCRIPT DE FOCO INTELIGENTE ---
 components.html("""
@@ -32,8 +37,7 @@ components.html("""
             const activeElem = window.parent.document.activeElement;
             let escribiendoPass = false;
             passInputs.forEach(p => { if(activeElem === p) escribiendoPass = true; });
-            const escribiendoObs = inputs.length > 1 && activeElem === inputs[1];
-            if (activeElem !== dniInput && !escribiendoPass && !escribiendoObs) {
+            if (activeElem !== dniInput && !escribiendoPass) {
                 dniInput.focus();
             }
         }
@@ -47,10 +51,9 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 url_hoja = st.secrets["connections"]["gsheets"]["spreadsheet"]
 
 if "reset_key" not in st.session_state: st.session_state.reset_key = 0
-if "mostrar_obs" not in st.session_state: st.session_state.mostrar_obs = False
 
-# --- 3. FUNCIÓN DE GRABACIÓN ---
-def registrar_en_nube(dni, nombre, tipo, obs=""):
+# --- 3. LÓGICA DE REGISTRO ---
+def registrar_en_nube(dni, nombre, tipo):
     try:
         ahora = obtener_hora_peru()
         tardanza_min = 0
@@ -63,8 +66,7 @@ def registrar_en_nube(dni, nombre, tipo, obs=""):
 
         nueva_fila = pd.DataFrame([{
             "DNI": str(dni).strip(), "Nombre": nombre, "Fecha": ahora.strftime("%Y-%m-%d"),
-            "Hora": ahora.strftime("%H:%M:%S"), "Tipo": tipo, "Observacion": obs, 
-            "Tardanza_Min": tardanza_min
+            "Hora": ahora.strftime("%H:%M:%S"), "Tipo": tipo, "Tardanza_Min": tardanza_min
         }])
         
         st.cache_data.clear()
@@ -72,56 +74,49 @@ def registrar_en_nube(dni, nombre, tipo, obs=""):
         df_final = pd.concat([df_h, nueva_fila], ignore_index=True)
         conn.update(spreadsheet=url_hoja, worksheet="Sheet1", data=df_final)
         
-        st.success(f"✅ {tipo} REGISTRADO")
-        time.sleep(1.2)
+        st.success(f"✅ {tipo} REGISTRADO CORRECTAMENTE")
+        time.sleep(1)
         st.session_state.reset_key += 1
-        st.session_state.mostrar_obs = False
         st.rerun()
     except Exception as e:
-        st.error(f"Error: {e}")
+        st.error(f"Error al conectar: {e}")
 
 # --- 4. INTERFAZ ---
 modo = "Marcación"
 with st.sidebar:
-    # --- EL LOBO (ANIMAL) AL COSTADO DE GESTIÓN LOBO ---
-    if os.path.exists("logo_lobo.png"):
-        img_64 = get_base64_image("logo_lobo.png")
+    # --- ISOTIPO DEL LOBO ANTEPUESTO A GESTIÓN LOBO ---
+    img_data = get_base64_image("logo_lobo.png")
+    if img_data:
         st.markdown(f"""
-            <div style='display: flex; align-items: center; gap: 10px; margin-bottom: 20px;'>
-                <div style='width: 45px; height: 45px; overflow: hidden; display: flex; align-items: center; justify-content: center;'>
-                    <img src='data:image/png;base64,{img_64}' 
-                         style='width: 200px; margin-left: 145px;'>
+            <div style='display: flex; align-items: center; gap: 12px; margin-bottom: 25px;'>
+                <div style='width: 50px; height: 50px; overflow: hidden; display: flex; align-items: center; justify-content: center; border-radius: 8px;'>
+                    <img src='data:image/png;base64,{img_data}' 
+                         style='width: 185px; margin-left: 135px;'>
                 </div>
-                <h1 style='color: #1E3A8A; font-size: 26px; margin: 0; white-space: nowrap;'>Gestión Lobo</h1>
+                <h1 style='color: #1E3A8A; font-size: 24px; margin: 0; font-family: sans-serif;'>Gestión Lobo</h1>
             </div>
         """, unsafe_allow_html=True)
     else:
         st.title("Gestión Lobo")
     
-    st.write("---")
+    st.divider()
     if st.checkbox("Acceso Administrador"):
         clave = st.text_input("Contraseña:", type="password")
-        if clave == "Lobo2026":
-            modo = "Admin"
+        if clave == "Lobo2026": modo = "Admin"
 
 # Cabecera principal centrada
 c_izq, c_logo, c_tit, c_der = st.columns([1, 3, 6, 1])
 with c_logo:
     if os.path.exists("logo_lobo.png"):
-        st.write(""); st.write("")
         st.image("logo_lobo.png", width=300)
 with c_tit:
-    st.markdown(f"""
-        <div style='padding-top: 15px;'>
-            <h1 style='color: #1E3A8A; font-size: 50px; margin-bottom: 0px;'>Marcación Sr. Lobo</h1>
-            <h3 style='color: #444; font-size: 26px; margin-top: -10px;'>Sr. Lobo BPO Solutions</h3>
-        </div>
-    """, unsafe_allow_html=True)
+    st.markdown("<h1 style='color: #1E3A8A; font-size: 48px; margin-bottom: 0;'>Marcación Sr. Lobo</h1>", unsafe_allow_html=True)
+    st.markdown("<h3 style='color: #444; margin-top: -10px;'>Sr. Lobo BPO Solutions</h3>", unsafe_allow_html=True)
 
 st.divider()
 
 if modo == "Marcación":
-    st.write("### DIGITE SU DNI:")
+    st.write("### INGRESE SU DNI:")
     c_dni, _ = st.columns([1, 4])
     with c_dni:
         dni_in = st.text_input("DNI", key=f"dni_{st.session_state.reset_key}", label_visibility="collapsed", max_chars=12)
@@ -133,73 +128,32 @@ if modo == "Marcación":
         
         if not emp.empty:
             nombre = emp.iloc[0]['Nombre']
-            st.info(f"👤 TRABAJADOR: {nombre}")
-            df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
-            hoy = obtener_hora_peru().strftime("%Y-%m-%d")
-            df_h['DNI'] = df_h['DNI'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
-            regs = df_h[(df_h['DNI'] == str(dni_in).strip()) & (df_h['Fecha'] == hoy)]
-            u_tipo = str(regs.iloc[-1]['Tipo']).strip().upper() if not regs.empty else "NADA"
-
-            col_btn = st.columns(4)
-            with col_btn[0]:
-                if st.button("📥 INGRESO", use_container_width=True, disabled=(u_tipo != "NADA")):
+            st.info(f"👤 TRABAJADOR: **{nombre}**")
+            
+            c1, c2 = st.columns(2)
+            with c1:
+                if st.button("📥 REGISTRAR INGRESO", use_container_width=True):
                     registrar_en_nube(dni_in, nombre, "INGRESO")
-            with col_btn[1]:
-                esta_dentro = (u_tipo in ["INGRESO", "RETORNO_PERMISO"])
-                if st.button("🚶 PERMISO", use_container_width=True, disabled=not esta_dentro):
-                    st.session_state.mostrar_obs = True
-                    st.rerun()
-            with col_btn[2]:
-                if st.button("🔙 RETORNO", use_container_width=True, disabled=(u_tipo != "SALIDA_PERMISO")):
-                    registrar_en_nube(dni_in, nombre, "RETORNO_PERMISO")
-            with col_btn[3]:
-                if st.button("📤 SALIDA", use_container_width=True, disabled=not esta_dentro):
+            with c2:
+                if st.button("📤 REGISTRAR SALIDA", use_container_width=True):
                     registrar_en_nube(dni_in, nombre, "SALIDA")
-
-            if st.session_state.mostrar_obs:
-                st.divider()
-                motivo = st.text_input("MOTIVO DEL PERMISO (ENTER):")
-                if motivo: registrar_en_nube(dni_in, nombre, "SALIDA_PERMISO", obs=motivo)
         else:
-            st.error("DNI no registrado.")
+            st.error("DNI no reconocido en la base de datos de empleados.")
 
-else: # --- ADMIN ---
-    st.header("📋 Reporte Final Lobo")
+else: # --- PANEL DE CONTROL ADMIN ---
+    st.header("📋 Auditoría de Asistencia")
     df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
     if not df_h.empty:
         df_h['Fecha_dt'] = pd.to_datetime(df_h['Fecha'], errors='coerce')
-        meses_dict = {1:"Enero", 2:"Febrero", 3:"Marzo", 4:"Abril", 5:"Mayo", 6:"Junio", 7:"Julio", 8:"Agosto", 9:"Septiembre", 10:"Octubre", 11:"Noviembre", 12:"Diciembre"}
-        
-        f1, f2, f3 = st.columns([1, 1, 2])
-        with f1:
-            sel_anio = st.selectbox("Año", sorted(df_h['Fecha_dt'].dt.year.unique(), reverse=True))
-        with f2:
-            m_disp = sorted(df_h[df_h['Fecha_dt'].dt.year == sel_anio]['Fecha_dt'].dt.month.unique())
-            sel_mes = st.selectbox("Mes", m_disp, format_func=lambda x: meses_dict[x])
-        with f3:
-            nombres = sorted(df_h[(df_h['Fecha_dt'].dt.year == sel_anio) & (df_h['Fecha_dt'].dt.month == sel_mes)]['Nombre'].unique())
-            sel_nombre = st.selectbox("Trabajador", ["TODOS"] + nombres)
-        
-        df_mes = df_h[(df_h['Fecha_dt'].dt.year == sel_anio) & (df_h['Fecha_dt'].dt.month == sel_mes)].copy()
+        mes_actual = obtener_hora_peru().month
+        df_mes = df_h[df_h['Fecha_dt'].dt.month == mes_actual].copy()
 
-        resumen_mensual = df_mes.groupby('Nombre')['Tardanza_Min'].sum().reset_index()
-        resumen_mensual['Excedente_Min'] = resumen_mensual['Tardanza_Min'].apply(lambda x: (x - TOLERANCIA_MENSUAL) if x > TOLERANCIA_MENSUAL else 0)
-        resumen_mensual['Descuento_Soles'] = resumen_mensual['Excedente_Min'] * COSTO_MINUTO
+        # Cálculo de tardanzas con bolsa de 30 min
+        resumen = df_mes.groupby('Nombre')['Tardanza_Min'].sum().reset_index()
+        resumen['Excedente'] = resumen['Tardanza_Min'].apply(lambda x: (x - TOLERANCIA_MENSUAL) if x > TOLERANCIA_MENSUAL else 0)
+        resumen['Monto_Dscto'] = resumen['Excedente'] * COSTO_MINUTO
 
-        df_final = df_mes.merge(resumen_mensual[['Nombre', 'Descuento_Soles']], on='Nombre', how='left')
-
-        if sel_nombre != "TODOS":
-            df_final = df_final[df_final['Nombre'] == sel_nombre]
-            resumen_mensual = resumen_mensual[resumen_mensual['Nombre'] == sel_nombre]
-
-        st.subheader("Historial de Marcaciones")
-        st.dataframe(df_final.drop(columns=['Fecha_dt']), use_container_width=True)
-        
-        st.subheader("💰 Auditoría de Planilla (Bolsa 30 min)")
-        st.table(resumen_mensual)
-
-        total_final = resumen_mensual['Descuento_Soles'].sum()
-        st.metric("Total General a Descontar", f"S/ {total_final:.2f}")
-        
-        csv = df_final.to_csv(index=False).encode('utf-8')
-        st.download_button("📥 Descargar Reporte Auditado", csv, f"Auditoria_Lobo_{meses_dict[sel_mes]}.csv", "text/csv")
+        st.dataframe(df_mes.drop(columns=['Fecha_dt']), use_container_width=True)
+        st.subheader("💰 Resumen de Planilla (Mes Actual)")
+        st.table(resumen.rename(columns={'Tardanza_Min': 'Min. Tardanza Totales', 'Excedente': 'Min. a Descontar'}))
+        st.metric("Total a Descontar en Planilla", f"S/ {resumen['Monto_Dscto'].sum():.2f}")
