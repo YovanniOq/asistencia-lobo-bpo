@@ -10,7 +10,7 @@ import streamlit.components.v1 as components
 st.set_page_config(page_title="Asistencia Lobo", layout="wide")
 COSTO_MINUTO = 0.15  
 HORA_ENTRADA_OFICIAL = "08:00:00" 
-TOLERANCIA_MENSUAL = 30 
+TOLERANCIA_MENSUAL = 30 #
 
 def obtener_hora_peru():
     return datetime.now(timezone.utc) - timedelta(hours=5)
@@ -77,15 +77,15 @@ def registrar_en_nube(dni, nombre, tipo, obs=""):
 # --- 4. INTERFAZ ---
 modo = "Marcación"
 with st.sidebar:
-    # DISEÑO COMPACTO: LOBO + TEXTO JUNTOS
-    # Usamos HTML/CSS para asegurar que la imagen esté pegada al texto
-    st.markdown("""
-        <div style='display: flex; align-items: center; gap: 8px; margin-bottom: 20px;'>
-            <img src='https://raw.githubusercontent.com/Yovanni/asistencia/main/logo_lobo.png' style='width: 45px; height: auto;'>
-            <h1 style='color: #1E3A8A; font-size: 24px; margin: 0; white-space: nowrap;'>Gestión Lobo</h1>
-        </div>
-    """, unsafe_allow_html=True)
+    # SOLUCIÓN: Columnas proporcionales para juntar imagen y texto
+    c1, c2 = st.columns([0.25, 1]) 
+    with c1:
+        if os.path.exists("logo_lobo.png"):
+            st.image("logo_lobo.png", width=45)
+    with c2:
+        st.markdown("<h2 style='color: #1E3A8A; margin: 0; padding-top: 5px;'>Gestión Lobo</h2>", unsafe_allow_html=True)
     
+    st.write("---")
     if st.checkbox("Acceso Administrador"):
         clave = st.text_input("Contraseña:", type="password")
         if clave == "Lobo2026":
@@ -119,8 +119,8 @@ if modo == "Marcación":
         emp = df_emp[df_emp['DNI'] == str(dni_in).strip()]
         
         if not emp.empty:
-            nombre = emp.iloc[0]['Nombre']
-            st.info(f"👤 TRABAJADOR: {nombre}") #
+            nombre = emp.iloc[0]['Nombre'] #
+            st.info(f"👤 TRABAJADOR: {nombre}")
             df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
             hoy = obtener_hora_peru().strftime("%Y-%m-%d")
             df_h['DNI'] = df_h['DNI'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
@@ -150,7 +150,7 @@ if modo == "Marcación":
         else:
             st.error("DNI no registrado.")
 
-else: # --- ADMIN CON LÓGICA DE BOLSA MENSUAL ---
+else: # --- ADMIN ---
     st.header("📋 Reporte Final Lobo")
     df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
     if not df_h.empty:
@@ -169,7 +169,7 @@ else: # --- ADMIN CON LÓGICA DE BOLSA MENSUAL ---
         
         df_mes = df_h[(df_h['Fecha_dt'].dt.year == sel_anio) & (df_h['Fecha_dt'].dt.month == sel_mes)].copy()
 
-        # LÓGICA DE AUDITORÍA MENSUAL (REPARADA)
+        # Auditoría Mensual
         resumen_mensual = df_mes.groupby('Nombre')['Tardanza_Min'].sum().reset_index()
         resumen_mensual['Excedente_Min'] = resumen_mensual['Tardanza_Min'].apply(lambda x: (x - TOLERANCIA_MENSUAL) if x > TOLERANCIA_MENSUAL else 0)
         resumen_mensual['Descuento_Soles'] = resumen_mensual['Excedente_Min'] * COSTO_MINUTO
