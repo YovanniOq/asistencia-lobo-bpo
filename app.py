@@ -2,7 +2,6 @@ import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 from datetime import datetime, timedelta, timezone
-import base64
 import os
 import time
 import streamlit.components.v1 as components
@@ -25,9 +24,9 @@ components.html("""
         if (inputs.length > 0) {
             const dniInput = inputs[0];
             const activeElem = window.parent.document.activeElement;
-            const escribiendoObs = inputs.length > 1 && activeElem === inputs[1];
             let escribiendoPass = false;
             passInputs.forEach(p => { if(activeElem === p) escribiendoPass = true; });
+            const escribiendoObs = inputs.length > 1 && activeElem === inputs[1];
             if (activeElem !== dniInput && !escribiendoPass && !escribiendoObs) {
                 dniInput.focus();
             }
@@ -77,34 +76,18 @@ def registrar_en_nube(dni, nombre, tipo, obs=""):
 
 # --- 4. INTERFAZ ---
 modo = "Marcación"
-
 with st.sidebar:
-    # IMAGEN DEL LOBITO EN BASE64 (Solo la cabeza)
-    # Reemplaza 'lobo_cortado.png' con el nombre de tu archivo de imagen que solo tenga la cabeza.
-    if os.path.exists('lobo_cortado.png'):
-        with open("lobo_cortado.png", "rb") as image_file:
-            encoded_string = base64.b64encode(image_file.read()).decode()
-            
-        st.markdown(
-            f"""
-            <div style="display: flex; align-items: center;">
-                <img src="data:image/png;base64,{encoded_string}" width="50" style="margin-right: 15px;">
-                <h1 style="color: #1E3A8A; font-size: 32px; margin: 0;">Gestión Lobo</h1>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-    else:
-        st.markdown(
-            f"""
-            <div style="display: flex; align-items: center;">
-                <h1 style="color: #1E3A8A; font-size: 32px; margin: 0;">Gestión Lobo (Logo Falta)</h1>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-    st.write("") 
+    # DISEÑO COMPACTO: LOBO + TEXTO JUNTOS
+    # Creamos dos columnas muy pegadas para el logo y el texto
+    c1, c2 = st.columns([0.3, 1])
+    with c1:
+        # Intentamos cargar el logo (asegúrate que el archivo se llame logo_lobo.png)
+        if os.path.exists("logo_lobo.png"):
+            st.image("logo_lobo.png", use_container_width=True)
+    with c2:
+        st.markdown("<h2 style='color: #1E3A8A; margin: 0; padding-top: 5px; white-space: nowrap;'>Gestión Lobo</h2>", unsafe_allow_html=True)
+    
+    st.divider()
     if st.checkbox("Acceso Administrador"):
         clave = st.text_input("Contraseña:", type="password")
         if clave == "Lobo2026":
@@ -113,10 +96,9 @@ with st.sidebar:
 # Cabecera principal centrada
 c_izq, c_logo, c_tit, c_der = st.columns([1, 3, 6, 1])
 with c_logo:
-    # Aquí puedes mantener el logo completo si lo deseas. Reemplaza 'logo_completo.png' con el archivo correcto.
-    if os.path.exists("logo_completo.png"):
-        st.write(""); st.write("") # Espaciadores
-        st.image("logo_completo.png", width=300)
+    if os.path.exists("logo_lobo.png"):
+        st.write(""); st.write("")
+        st.image("logo_lobo.png", width=300)
 with c_tit:
     st.markdown(f"""
         <div style='padding-top: 15px;'>
@@ -139,28 +121,27 @@ if modo == "Marcación":
         emp = df_emp[df_emp['DNI'] == str(dni_in).strip()]
         
         if not emp.empty:
-            nombre = emp.iloc[0]['Nombre']
-            st.info(f"👤 TRABAJADOR: {nombre}") #
-            
+            nombre = emp.iloc[0]['Nombre'] #
+            st.info(f"👤 TRABAJADOR: {nombre}")
             df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
             hoy = obtener_hora_peru().strftime("%Y-%m-%d")
             df_h['DNI'] = df_h['DNI'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
             regs = df_h[(df_h['DNI'] == str(dni_in).strip()) & (df_h['Fecha'] == hoy)]
             u_tipo = str(regs.iloc[-1]['Tipo']).strip().upper() if not regs.empty else "NADA"
 
-            c1, c2, c3, c4 = st.columns(4)
-            with c1:
+            col_btn = st.columns(4)
+            with col_btn[0]:
                 if st.button("📥 INGRESO", use_container_width=True, disabled=(u_tipo != "NADA")):
                     registrar_en_nube(dni_in, nombre, "INGRESO")
-            with c2:
+            with col_btn[1]:
                 esta_dentro = (u_tipo in ["INGRESO", "RETORNO_PERMISO"])
                 if st.button("🚶 PERMISO", use_container_width=True, disabled=not esta_dentro):
                     st.session_state.mostrar_obs = True
                     st.rerun()
-            with c3:
+            with col_btn[2]:
                 if st.button("🔙 RETORNO", use_container_width=True, disabled=(u_tipo != "SALIDA_PERMISO")):
                     registrar_en_nube(dni_in, nombre, "RETORNO_PERMISO")
-            with c4:
+            with col_btn[3]:
                 if st.button("📤 SALIDA", use_container_width=True, disabled=not esta_dentro):
                     registrar_en_nube(dni_in, nombre, "SALIDA")
 
@@ -171,8 +152,8 @@ if modo == "Marcación":
         else:
             st.error("DNI no registrado.")
 
-else: # --- ADMIN CON LÓGICA DE BOLSA MENSUAL ACUMULADA ---
-    st.header("📋 Reporte Final Auditado")
+else: # --- ADMIN ---
+    st.header("📋 Reporte Final Lobo")
     df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
     if not df_h.empty:
         df_h['Fecha_dt'] = pd.to_datetime(df_h['Fecha'], errors='coerce')
@@ -180,8 +161,7 @@ else: # --- ADMIN CON LÓGICA DE BOLSA MENSUAL ACUMULADA ---
         
         f1, f2, f3 = st.columns([1, 1, 2])
         with f1:
-            anios = sorted(df_h['Fecha_dt'].dt.year.unique(), reverse=True)
-            sel_anio = st.selectbox("Año", anios)
+            sel_anio = st.selectbox("Año", sorted(df_h['Fecha_dt'].dt.year.unique(), reverse=True))
         with f2:
             m_disp = sorted(df_h[df_h['Fecha_dt'].dt.year == sel_anio]['Fecha_dt'].dt.month.unique())
             sel_mes = st.selectbox("Mes", m_disp, format_func=lambda x: meses_dict[x])
@@ -191,7 +171,7 @@ else: # --- ADMIN CON LÓGICA DE BOLSA MENSUAL ACUMULADA ---
         
         df_mes = df_h[(df_h['Fecha_dt'].dt.year == sel_anio) & (df_h['Fecha_dt'].dt.month == sel_mes)].copy()
 
-        # LÓGICA DE AUDITORÍA MENSUAL (REPARADA)
+        # Lógica de Auditoría Mensual
         resumen_mensual = df_mes.groupby('Nombre')['Tardanza_Min'].sum().reset_index()
         resumen_mensual['Excedente_Min'] = resumen_mensual['Tardanza_Min'].apply(lambda x: (x - TOLERANCIA_MENSUAL) if x > TOLERANCIA_MENSUAL else 0)
         resumen_mensual['Descuento_Soles'] = resumen_mensual['Excedente_Min'] * COSTO_MINUTO
@@ -212,4 +192,4 @@ else: # --- ADMIN CON LÓGICA DE BOLSA MENSUAL ACUMULADA ---
         st.metric("Total General a Descontar", f"S/ {total_final:.2f}")
         
         csv = df_final.to_csv(index=False).encode('utf-8')
-        st.download_button("📥 Descargar Reporte Auditado CSV", csv, f"Auditoria_Lobo_{meses_dict[sel_mes]}.csv", "text/csv")
+        st.download_button("📥 Descargar Reporte Auditado", csv, f"Auditoria_Lobo_{meses_dict[sel_mes]}.csv", "text/csv")
