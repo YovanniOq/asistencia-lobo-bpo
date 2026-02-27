@@ -16,7 +16,7 @@ TOLERANCIA_MENSUAL = 30 #
 def obtener_hora_peru():
     return datetime.now(timezone.utc) - timedelta(hours=5)
 
-# Función infalible para convertir imagen local a Base64
+# Función para convertir imagen local a Base64 para que no falle el cargado
 def get_base64_image(image_path):
     with open(image_path, "rb") as img_file:
         return base64.b64encode(img_file.read()).decode()
@@ -83,16 +83,16 @@ def registrar_en_nube(dni, nombre, tipo, obs=""):
 # --- 4. INTERFAZ ---
 modo = "Marcación"
 with st.sidebar:
-    # --- SOLO EL LOBO CENTRADO ARRIBA DEL TEXTO ---
+    # --- EL LOBO (ANIMAL) AL COSTADO DE GESTIÓN LOBO ---
     if os.path.exists("logo_lobo.png"):
         img_64 = get_base64_image("logo_lobo.png")
         st.markdown(f"""
-            <div style='text-align: center; margin-bottom: 10px;'>
-                <div style='width: 80px; height: 80px; overflow: hidden; margin: 0 auto;'>
+            <div style='display: flex; align-items: center; gap: 10px; margin-bottom: 20px;'>
+                <div style='width: 45px; height: 45px; overflow: hidden; display: flex; align-items: center; justify-content: center;'>
                     <img src='data:image/png;base64,{img_64}' 
-                         style='width: 380px; margin-left: -5px; margin-top: -10px;'>
+                         style='width: 200px; margin-left: 145px;'>
                 </div>
-                <h2 style='color: #1E3A8A; margin-top: 10px; font-size: 24px;'>Gestión Lobo</h2>
+                <h1 style='color: #1E3A8A; font-size: 26px; margin: 0; white-space: nowrap;'>Gestión Lobo</h1>
             </div>
         """, unsafe_allow_html=True)
     else:
@@ -159,7 +159,7 @@ if modo == "Marcación":
             if st.session_state.mostrar_obs:
                 st.divider()
                 motivo = st.text_input("MOTIVO DEL PERMISO (ENTER):")
-                if motivo: registrar_en_nube(dni_in, nombre, "SALIDA_PER_MISO", obs=motivo)
+                if motivo: registrar_en_nube(dni_in, nombre, "SALIDA_PERMISO", obs=motivo)
         else:
             st.error("DNI no registrado.")
 
