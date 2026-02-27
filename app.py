@@ -15,33 +15,23 @@ TOLERANCIA_MINUTOS = 30
 def obtener_hora_peru():
     return datetime.now(timezone.utc) - timedelta(hours=5)
 
-# --- JAVASCRIPT DE FOCO INTELIGENTE 2.0 (CORREGIDO) ---
+# --- JAVASCRIPT DE FOCO INTELIGENTE 2.0 ---
 components.html("""
     <script>
     const forceFocus = () => {
         const inputs = window.parent.document.querySelectorAll('input[type="text"]');
         const passInputs = window.parent.document.querySelectorAll('input[type="password"]');
-        
         if (inputs.length > 0) {
             const dniInput = inputs[0];
             const activeElem = window.parent.document.activeElement;
-            
-            // Verificamos si el usuario está en el campo de contraseña
             let escribiendoPass = false;
-            passInputs.forEach(p => { 
-                if(activeElem === p) escribiendoPass = true; 
-            });
-
-            // Verificamos si hay una caja de observación activa
+            passInputs.forEach(p => { if(activeElem === p) escribiendoPass = true; });
             const escribiendoObs = inputs.length > 1 && activeElem === inputs[1];
-
-            // SOLO forzar el foco si NO se está escribiendo clave ni observación
             if (activeElem !== dniInput && !escribiendoPass && !escribiendoObs) {
                 dniInput.focus();
             }
         }
     };
-    // Revisar cada segundo para no ser tan agresivo
     setInterval(forceFocus, 1000);
     </script>
 """, height=0)
@@ -96,8 +86,7 @@ with st.sidebar:
 c_izq, c_logo, c_tit, c_der = st.columns([1, 3, 6, 1])
 with c_logo:
     if os.path.exists("logo_lobo.png"):
-        st.write("") 
-        st.write("")
+        st.write(""); st.write("")
         st.image("logo_lobo.png", width=300)
 with c_tit:
     st.markdown(f"""
@@ -152,39 +141,35 @@ if modo == "Marcación":
         else:
             st.error("DNI no registrado.")
 
-else: # --- ADMIN ---
-    st.header("📋 Panel de Administración Lobo")
+else: # --- ADMIN (LÓGICA DE AUDITORÍA FINAL) ---
+    st.header("📋 Reporte Final Lobo")
     df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
     if not df_h.empty:
         df_h['Fecha_dt'] = pd.to_datetime(df_h['Fecha'], errors='coerce')
-        meses_dict = {1:"Enero", 2:"Febrero", 3:"Marzo", 4:"Abril", 5:"Mayo", 6:"Junio", 
-                      7:"Julio", 8:"Agosto", 9:"Septiembre", 10:"Octubre", 11:"Noviembre", 12:"Diciembre"}
+        meses_dict = {1:"Enero", 2:"Febrero", 3:"Marzo", 4:"Abril", 5:"Mayo", 6:"Junio", 7:"Julio", 8:"Agosto", 9:"Septiembre", 10:"Octubre", 11:"Noviembre", 12:"Diciembre"}
         
         f1, f2, f3 = st.columns([1, 1, 2])
         with f1:
-            anios = sorted(df_h['Fecha_dt'].dt.year.unique(), reverse=True)
-            sel_anio = st.selectbox("Año", anios)
+            sel_anio = st.selectbox("Año", sorted(df_h['Fecha_dt'].dt.year.unique(), reverse=True))
         with f2:
             m_disp = sorted(df_h[df_h['Fecha_dt'].dt.year == sel_anio]['Fecha_dt'].dt.month.unique())
             sel_mes = st.selectbox("Mes", m_disp, format_func=lambda x: meses_dict[x])
         with f3:
-            nombres_disp = sorted(df_h[(df_h['Fecha_dt'].dt.year == sel_anio) & (df_h['Fecha_dt'].dt.month == sel_mes)]['Nombre'].unique())
-            opciones_nombre = ["TODOS"] + nombres_disp
-            sel_nombre = st.selectbox("Filtrar por Trabajador", opciones_nombre)
+            nombres = sorted(df_h[(df_h['Fecha_dt'].dt.year == sel_anio) & (df_h['Fecha_dt'].dt.month == sel_mes)]['Nombre'].unique())
+            sel_nombre = st.selectbox("Trabajador", ["TODOS"] + nombres)
         
         df_f = df_h[(df_h['Fecha_dt'].dt.year == sel_anio) & (df_h['Fecha_dt'].dt.month == sel_mes)].copy()
-        if sel_nombre != "TODOS":
-            df_f = df_f[df_f['Nombre'] == sel_nombre]
+        if sel_nombre != "TODOS": df_f = df_f[df_f['Nombre'] == sel_nombre]
 
-        df_f['Descuento_Soles'] = df_f['Tardanza_Min'].apply(
-            lambda x: round(float(x) * COSTO_MINUTO, 2) if float(x) > TOLERANCIA_MINUTOS else 0.0
-        )
+        # CÁLCULO DE AUDITORÍA EN TIEMPO REAL
+        df_f['Monto_Descuento'] = df_f['Tardanza_Min'].apply(lambda x: round(float(x) * COSTO_MINUTO, 2) if float(x) > TOLERANCIA_MINUTOS else 0.0)
 
         st.dataframe(df_f.drop(columns=['Fecha_dt']), use_container_width=True)
         
-        total_desc = df_f['Descuento_Soles'].sum()
-        nombre_reporte = sel_nombre if sel_nombre != "TODOS" else "General"
-        st.metric(f"Total Descuentos ({nombre_reporte}) - {meses_dict[sel_mes]}", f"S/ {total_desc:.2f}")
+        total_desc = df_f['Monto_Descuento'].sum()
+        if total_desc > 0:
+            st.warning(f"🚨 Se han detectado descuentos por aplicar: S/ {total_desc:.2f}")
+        else:
+            st.success("✅ No se detectaron descuentos (dentro de la tolerancia).")
         
-        csv = df_f.drop(columns=['Fecha_dt']).to_csv(index=False).encode('utf-8')
-        st.download_button(f"📥 Descargar Reporte {nombre_reporte}", csv, f"Reporte_{nombre_reporte}_{meses_dict[sel_mes]}.csv", "text/csv")
+        st.metric("Total Final a Descontar", f"S/ {total_desc:.2f}")
