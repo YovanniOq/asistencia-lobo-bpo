@@ -4,7 +4,6 @@ import pandas as pd
 from datetime import datetime, timedelta, timezone
 import os
 import time
-import base64
 import streamlit.components.v1 as components
 
 # --- 1. CONFIGURACIÓN ---
@@ -15,16 +14,6 @@ TOLERANCIA_MENSUAL = 30
 
 def obtener_hora_peru():
     return datetime.now(timezone.utc) - timedelta(hours=5)
-
-# Función para convertir imagen local a Base64 y evitar fallos de carga
-def get_base64_image(image_path):
-    try:
-        if os.path.exists(image_path):
-            with open(image_path, "rb") as img_file:
-                return base64.b64encode(img_file.read()).decode()
-    except:
-        return ""
-    return ""
 
 # --- JAVASCRIPT DE FOCO INTELIGENTE ---
 components.html("""
@@ -52,7 +41,7 @@ url_hoja = st.secrets["connections"]["gsheets"]["spreadsheet"]
 
 if "reset_key" not in st.session_state: st.session_state.reset_key = 0
 
-# --- 3. LÓGICA DE REGISTRO ---
+# --- 3. FUNCIÓN DE REGISTRO ---
 def registrar_en_nube(dni, nombre, tipo):
     try:
         ahora = obtener_hora_peru()
@@ -74,86 +63,78 @@ def registrar_en_nube(dni, nombre, tipo):
         df_final = pd.concat([df_h, nueva_fila], ignore_index=True)
         conn.update(spreadsheet=url_hoja, worksheet="Sheet1", data=df_final)
         
-        st.success(f"✅ {tipo} REGISTRADO CORRECTAMENTE")
+        st.success(f"✅ {tipo} REGISTRADO")
         time.sleep(1)
         st.session_state.reset_key += 1
         st.rerun()
     except Exception as e:
-        st.error(f"Error al conectar: {e}")
+        st.error(f"Error: {e}")
 
 # --- 4. INTERFAZ ---
 modo = "Marcación"
 with st.sidebar:
-    # --- ISOTIPO DEL LOBO ANTEPUESTO A GESTIÓN LOBO ---
-    img_data = get_base64_image("logo_lobo.png")
-    if img_data:
-        st.markdown(f"""
-            <div style='display: flex; align-items: center; gap: 12px; margin-bottom: 25px;'>
-                <div style='width: 50px; height: 50px; overflow: hidden; display: flex; align-items: center; justify-content: center; border-radius: 8px;'>
-                    <img src='data:image/png;base64,{img_data}' 
-                         style='width: 185px; margin-left: 135px;'>
-                </div>
-                <h1 style='color: #1E3A8A; font-size: 24px; margin: 0; font-family: sans-serif;'>Gestión Lobo</h1>
-            </div>
-        """, unsafe_allow_html=True)
-    else:
-        st.title("Gestión Lobo")
+    # --- EL LOBO AZUL (IMAGEN INCRUSTADA) AL COSTADO DE GESTIÓN LOBO ---
+    st.markdown("""
+        <div style='display: flex; align-items: center; gap: 10px; margin-bottom: 20px;'>
+            <img src='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGQAAACCCAMAAACp8v9fAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAAlQTFRF////3+DfpKSkqf99AAAAAAAAsX5zVAAAAAN0Uk5T//8A18o9BAAAAI9JREFUeNrs2MENwCAQA0FX6L9pE0hIn70DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DAgYAn/YCH9mPqXMAAAAASUVORK5CYII=' 
+                 style='width: 45px; height: auto;'>
+            <h1 style='color: #1E3A8A; font-size: 24px; margin: 0; white-space: nowrap;'>Gestión Lobo</h1>
+        </div>
+    """, unsafe_allow_html=True)
     
     st.divider()
     if st.checkbox("Acceso Administrador"):
         clave = st.text_input("Contraseña:", type="password")
         if clave == "Lobo2026": modo = "Admin"
 
-# Cabecera principal centrada
-c_izq, c_logo, c_tit, c_der = st.columns([1, 3, 6, 1])
-with c_logo:
+# Cabecera principal
+c1, c2 = st.columns([1, 4])
+with c1:
     if os.path.exists("logo_lobo.png"):
-        st.image("logo_lobo.png", width=300)
-with c_tit:
-    st.markdown("<h1 style='color: #1E3A8A; font-size: 48px; margin-bottom: 0;'>Marcación Sr. Lobo</h1>", unsafe_allow_html=True)
+        st.image("logo_lobo.png", width=150)
+with c2:
+    st.markdown("<h1 style='color: #1E3A8A; font-size: 40px; margin-bottom: 0;'>Marcación Sr. Lobo</h1>", unsafe_allow_html=True)
     st.markdown("<h3 style='color: #444; margin-top: -10px;'>Sr. Lobo BPO Solutions</h3>", unsafe_allow_html=True)
 
 st.divider()
 
 if modo == "Marcación":
-    st.write("### INGRESE SU DNI:")
-    c_dni, _ = st.columns([1, 4])
-    with c_dni:
-        dni_in = st.text_input("DNI", key=f"dni_{st.session_state.reset_key}", label_visibility="collapsed", max_chars=12)
+    st.write("### DIGITE SU DNI:")
+    dni_in = st.text_input("DNI", key=f"dni_{st.session_state.reset_key}", label_visibility="collapsed", max_chars=12)
 
     if dni_in:
         st.cache_data.clear()
-        df_emp = pd.read_csv("empleados.csv", dtype={'DNI': str})
-        emp = df_emp[df_emp['DNI'] == str(dni_in).strip()]
-        
-        if not emp.empty:
-            nombre = emp.iloc[0]['Nombre']
-            st.info(f"👤 TRABAJADOR: **{nombre}**")
+        try:
+            df_emp = pd.read_csv("empleados.csv", dtype={'DNI': str})
+            emp = df_emp[df_emp['DNI'] == str(dni_in).strip()]
             
-            c1, c2 = st.columns(2)
-            with c1:
-                if st.button("📥 REGISTRAR INGRESO", use_container_width=True):
-                    registrar_en_nube(dni_in, nombre, "INGRESO")
-            with c2:
-                if st.button("📤 REGISTRAR SALIDA", use_container_width=True):
-                    registrar_en_nube(dni_in, nombre, "SALIDA")
-        else:
-            st.error("DNI no reconocido en la base de datos de empleados.")
+            if not emp.empty:
+                nombre = emp.iloc[0]['Nombre']
+                st.info(f"👤 TRABAJADOR: {nombre}")
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("📥 INGRESO", use_container_width=True):
+                        registrar_en_nube(dni_in, nombre, "INGRESO")
+                with col2:
+                    if st.button("📤 SALIDA", use_container_width=True):
+                        registrar_en_nube(dni_in, nombre, "SALIDA")
+            else:
+                st.error("DNI no registrado.")
+        except FileNotFoundError:
+            st.error("Falta archivo empleados.csv")
 
-else: # --- PANEL DE CONTROL ADMIN ---
-    st.header("📋 Auditoría de Asistencia")
+else: # --- PANEL ADMIN ---
+    st.header("📋 Resumen Mensual")
     df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
     if not df_h.empty:
         df_h['Fecha_dt'] = pd.to_datetime(df_h['Fecha'], errors='coerce')
-        mes_actual = obtener_hora_peru().month
-        df_mes = df_h[df_h['Fecha_dt'].dt.month == mes_actual].copy()
+        df_mes = df_h[df_h['Fecha_dt'].dt.month == obtener_hora_peru().month].copy()
 
-        # Cálculo de tardanzas con bolsa de 30 min
         resumen = df_mes.groupby('Nombre')['Tardanza_Min'].sum().reset_index()
         resumen['Excedente'] = resumen['Tardanza_Min'].apply(lambda x: (x - TOLERANCIA_MENSUAL) if x > TOLERANCIA_MENSUAL else 0)
-        resumen['Monto_Dscto'] = resumen['Excedente'] * COSTO_MINUTO
+        resumen['Descuento'] = resumen['Excedente'] * COSTO_MINUTO
 
         st.dataframe(df_mes.drop(columns=['Fecha_dt']), use_container_width=True)
-        st.subheader("💰 Resumen de Planilla (Mes Actual)")
-        st.table(resumen.rename(columns={'Tardanza_Min': 'Min. Tardanza Totales', 'Excedente': 'Min. a Descontar'}))
-        st.metric("Total a Descontar en Planilla", f"S/ {resumen['Monto_Dscto'].sum():.2f}")
+        st.subheader("💰 Resumen de Descuentos")
+        st.table(resumen)
