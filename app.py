@@ -77,10 +77,16 @@ def registrar_en_nube(dni, nombre, tipo, obs=""):
 # --- 4. INTERFAZ ---
 modo = "Marcación"
 with st.sidebar:
-    # REEMPLAZO DEL LOBO GENÉRICO POR TU LOGO OFICIAL
+    # CABECERA PERSONALIZADA: LOGO A LA IZQUIERDA DEL TEXTO
     if os.path.exists("logo_lobo.png"):
-        st.image("logo_lobo.png", width=180)
-    st.title("Gestión Lobo")
+        st.markdown(f"""
+            <div style='display: flex; align-items: center; gap: 10px; margin-bottom: 20px;'>
+                <img src='file/logo_lobo.png' width='50'>
+                <h2 style='color: #1E3A8A; margin: 0; font-size: 24px;'>Gestión Lobo</h2>
+            </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.title("Gestión Lobo")
     
     if st.checkbox("Acceso Administrador"):
         clave = st.text_input("Contraseña:", type="password")
@@ -167,23 +173,4 @@ else: # --- ADMIN CON LÓGICA DE BOLSA MENSUAL ACUMULADA ---
 
         # LÓGICA DE AUDITORÍA MENSUAL
         resumen_mensual = df_mes.groupby('Nombre')['Tardanza_Min'].sum().reset_index()
-        resumen_mensual['Excedente_Min'] = resumen_mensual['Tardanza_Min'].apply(lambda x: (x - TOLERANCIA_MENSUAL) if x > TOLERANCIA_MENSUAL else 0)
-        resumen_mensual['Descuento_Soles'] = resumen_mensual['Excedente_Min'] * COSTO_MINUTO
-
-        df_final = df_mes.merge(resumen_mensual[['Nombre', 'Descuento_Soles']], on='Nombre', how='left')
-
-        if sel_nombre != "TODOS":
-            df_final = df_final[df_final['Nombre'] == sel_nombre]
-            resumen_mensual = resumen_mensual[resumen_mensual['Nombre'] == sel_nombre]
-
-        st.subheader("Historial de Marcaciones")
-        st.dataframe(df_final.drop(columns=['Fecha_dt']), use_container_width=True)
-        
-        st.subheader("💰 Auditoría de Planilla (Bolsa Mensual 30 min)")
-        st.table(resumen_mensual)
-
-        total_final = resumen_mensual['Descuento_Soles'].sum()
-        st.metric("Total General a Descontar", f"S/ {total_final:.2f}")
-        
-        csv = df_final.to_csv(index=False).encode('utf-8')
-        st.download_button("📥 Descargar Reporte Auditado", csv, f"Auditoria_Lobo_{meses_dict[sel_mes]}.csv", "text/csv")
+        resumen_mensual['Excedente_Min'] = resumen_mensual['Tardanza_
