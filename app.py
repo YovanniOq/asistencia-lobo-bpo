@@ -77,10 +77,12 @@ def registrar_en_nube(dni, nombre, tipo, obs=""):
 # --- 4. INTERFAZ ---
 modo = "Marcación"
 with st.sidebar:
-    # Mostramos el logo y el título en la barra lateral
+    # Mostramos el logo completo arriba para identidad de marca
     if os.path.exists("logo_lobo.png"):
-        st.image("logo_lobo.png", width=150)
-    st.title("Gestión Lobo")
+        st.image("logo_lobo.png", use_container_width=True)
+    
+    # Título con estilo personalizado
+    st.markdown("<h2 style='color: #1E3A8A; margin-top: -10px;'>Gestión Lobo</h2>", unsafe_allow_html=True)
     
     if st.checkbox("Acceso Administrador"):
         clave = st.text_input("Contraseña:", type="password")
@@ -165,7 +167,7 @@ else: # --- ADMIN ---
         
         df_mes = df_h[(df_h['Fecha_dt'].dt.year == sel_anio) & (df_h['Fecha_dt'].dt.month == sel_mes)].copy()
 
-        # LÓGICA DE AUDITORÍA MENSUAL (CORREGIDA)
+        # LÓGICA DE AUDITORÍA MENSUAL
         resumen_mensual = df_mes.groupby('Nombre')['Tardanza_Min'].sum().reset_index()
         resumen_mensual['Excedente_Min'] = resumen_mensual['Tardanza_Min'].apply(lambda x: (x - TOLERANCIA_MENSUAL) if x > TOLERANCIA_MENSUAL else 0)
         resumen_mensual['Descuento_Soles'] = resumen_mensual['Excedente_Min'] * COSTO_MINUTO
