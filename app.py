@@ -26,7 +26,6 @@ st.markdown("""
         border-radius: 20px;
         box-shadow: 0 15px 35px rgba(0,0,0,0.1);
     }
-    /* Limpieza de logos */
     img {
         background-color: transparent !important;
         mix-blend-mode: multiply;
@@ -34,26 +33,10 @@ st.markdown("""
     }
     .sidebar-brand-horizontal {
         display: flex;
-        align-items: center;
-        gap: 15px;
-        margin-bottom: 25px;
+        align-items: center; gap: 15px; margin-bottom: 25px;
     }
     </style>
     """, unsafe_allow_html=True)
-
-# --- JAVASCRIPT DE FOCO ---
-components.html("""
-    <script>
-    const forceFocus = () => {
-        const inputs = window.parent.document.querySelectorAll('input[type="text"]');
-        if (inputs.length > 0) {
-            const dniInput = inputs[0];
-            if (window.parent.document.activeElement !== dniInput) dniInput.focus();
-        }
-    };
-    setInterval(forceFocus, 1000);
-    </script>
-""", height=0)
 
 # --- 2. CONEXIÓN ---
 conn = st.connection("gsheets", type=GSheetsConnection)
@@ -72,11 +55,30 @@ with st.sidebar:
     st.markdown("</div>", unsafe_allow_html=True)
     
     st.divider()
-    if st.checkbox("Acceso Administrador"):
+    acceso_admin = st.checkbox("Acceso Administrador")
+    if acceso_admin:
         clave = st.text_input("Contraseña:", type="password")
         if clave == "Lobo2026": modo = "Admin"
 
-# --- 4. CABECERA PRINCIPAL (LOGO ELEVADO) ---
+# --- JAVASCRIPT DE FOCO INTELIGENTE (CORREGIDO PARA ADMIN) ---
+# Solo se ejecuta si NO estamos en modo Admin
+if modo == "Marcación":
+    components.html("""
+        <script>
+        const forceFocus = () => {
+            const inputs = window.parent.document.querySelectorAll('input[type="text"]');
+            if (inputs.length > 0) {
+                const dniInput = inputs[0];
+                if (window.parent.document.activeElement !== dniInput) {
+                    dniInput.focus();
+                }
+            }
+        };
+        setInterval(forceFocus, 1000);
+        </script>
+    """, height=0)
+
+# --- 4. CABECERA PRINCIPAL ---
 c_izq, c_logo_p, c_tit, c_der = st.columns([0.5, 3.5, 6, 0.5])
 with c_logo_p:
     if os.path.exists("logo_lobo.png"):
@@ -107,24 +109,16 @@ if modo == "Marcación":
         if not emp.empty:
             nombre = emp.iloc[0]['Nombre']
             st.info(f"👤 TRABAJADOR: {nombre}")
-            
-            # FILA 1: INGRESO Y SALIDA GENERAL
             c1, c2 = st.columns(2)
-            with c1:
-                if st.button("📥 INGRESO", use_container_width=True): st.success(f"INGRESO: {nombre}")
-            with c2:
-                if st.button("📤 SALIDA", use_container_width=True): st.success(f"SALIDA: {nombre}")
-            
-            # FILA 2: SALIDA Y ENTRADA DE PERMISO
+            with c1: st.button("📥 INGRESO", use_container_width=True)
+            with c2: st.button("📤 SALIDA", use_container_width=True)
             c3, c4 = st.columns(2)
-            with c3:
-                if st.button("🚶 SALIDA PERMISO", use_container_width=True): st.success(f"SALIDA PERMISO: {nombre}")
-            with c4:
-                if st.button("🏠 ENTRADA PERMISO", use_container_width=True): st.success(f"REGRESO PERMISO: {nombre}")
+            with c3: st.button("🚶 SALIDA PERMISO", use_container_width=True)
+            with c4: st.button("🏠 ENTRADA PERMISO", use_container_width=True)
         else:
             st.error("DNI no registrado.")
 
-else: # --- PANEL ADMIN CON REPORTES ---
+else: # --- PANEL ADMIN (SIN INTERRUPCIONES DE FOCO) ---
     st.header("📋 Reporte Auditado de Asistencia")
     df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
     
