@@ -12,7 +12,7 @@ COSTO_MINUTO = 0.15
 HORA_ENTRADA_OFICIAL = "08:00:00" 
 TOLERANCIA_MENSUAL = 30 
 
-# --- ESTILOS CSS: FONDO, MARCA DE AGUA Y ALINEACIÓN LATERAL ---
+# --- ESTILOS CSS: FONDO, MARCA DE AGUA Y ALINEACIÓN HORIZONTAL ---
 st.markdown("""
     <style>
     /* Fondo de oficina general */
@@ -23,14 +23,13 @@ st.markdown("""
         background-attachment: fixed;
     }
     
-    /* Contenedor principal con MARCA DE AGUA (Gota de agua) */
+    /* Contenedor principal con MARCA DE AGUA sutil */
     .main .block-container {
         background-color: rgba(255, 255, 255, 0.95);
         padding: 3rem;
         border-radius: 15px;
         box-shadow: 0 10px 30px rgba(0,0,0,0.15);
         position: relative;
-        overflow: hidden;
     }
 
     /* Gota de agua del Lobo centrada en el fondo del reporte */
@@ -45,28 +44,32 @@ st.markdown("""
         background-repeat: no-repeat;
         background-position: center;
         background-size: contain;
-        opacity: 0.04; /* Más sutil para no interferir con la lectura */
+        opacity: 0.04; 
         transform: translate(-50%, -50%);
         pointer-events: none;
         z-index: 0;
     }
 
-    /* ALINEACIÓN HOMOGÉNEA: LOBO AL COSTADO IZQUIERDO DEL TÍTULO */
-    .sidebar-brand-container {
+    /* BLOQUE ÚNICO PARA ALINEACIÓN HORIZONTAL PERFECTA */
+    .sidebar-brand-horizontal {
         display: flex;
-        align-items: center; /* Alineación vertical perfecta */
-        gap: 12px;
-        margin-bottom: 25px;
-        padding-left: 5px;
+        flex-direction: row;
+        align-items: center; /* Centrado vertical entre logo y texto */
+        justify-content: flex-start;
+        gap: 10px;
+        margin-bottom: 20px;
+        padding: 10px 0;
     }
-    .sidebar-brand-container img {
-        margin: 0;
+    .sidebar-brand-horizontal img {
+        width: 35px;
+        height: auto;
     }
-    .sidebar-brand-container h2 {
+    .sidebar-brand-horizontal span {
         color: #1E3A8A;
-        font-size: 22px; /* Tamaño equilibrado con el logo */
-        margin: 0;
-        line-height: 1;
+        font-size: 22px;
+        font-weight: bold;
+        font-family: sans-serif;
+        white-space: nowrap;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -129,19 +132,21 @@ def registrar_en_nube(dni, nombre, tipo):
 # --- 4. INTERFAZ ---
 modo = "Marcación"
 with st.sidebar:
-    # --- CABECERA CORREGIDA: LOBO AL COSTADO DEL TÍTULO ---
-    st.markdown("<div class='sidebar-brand-container'>", unsafe_allow_html=True)
-    if os.path.exists("Lobo.png"):
-        st.image("Lobo.png", width=38) # Tamaño ajustado para homogeneidad
-    st.markdown("<h2>Gestión Lobo</h2>", unsafe_allow_html=True)
-    st.markdown("</div>", unsafe_allow_html=True)
+    # --- CABECERA HORIZONTAL: LOBO A LA IZQUIERDA DEL TEXTO ---
+    # Usamos HTML directo para forzar la posición horizontal
+    st.markdown(f"""
+        <div class="sidebar-brand-horizontal">
+            <img src="https://raw.githubusercontent.com/Yovanni/asistencia/main/Lobo.png">
+            <span>Gestión Lobo</span>
+        </div>
+    """, unsafe_allow_html=True)
     
     st.divider()
     if st.checkbox("Acceso Administrador"):
         clave = st.text_input("Contraseña:", type="password")
         if clave == "Lobo2026": modo = "Admin"
 
-# Cabecera principal
+# Cabecera principal (RESTAURADA A 50PX)
 c_izq, c_logo, c_tit, c_der = st.columns([1, 3, 6, 1])
 with c_logo:
     if os.path.exists("logo_lobo.png"): st.image("logo_lobo.png", width=300)
