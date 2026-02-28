@@ -12,10 +12,9 @@ COSTO_MINUTO = 0.15
 HORA_ENTRADA_OFICIAL = "08:00:00" 
 TOLERANCIA_MENSUAL = 30 
 
-# --- ESTILOS CSS: TRANSPARENCIA TOTAL Y FUSIÓN ---
+# --- ESTILOS CSS ---
 st.markdown("""
     <style>
-    /* Fondo de oficina con filtro suave */
     .stApp {
         background-image: linear-gradient(rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.8)), 
         url("https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=1350&q=80");
@@ -23,7 +22,6 @@ st.markdown("""
         background-attachment: fixed;
     }
     
-    /* Contenedor principal sin cajas blancas molestas */
     .main .block-container {
         background-color: rgba(255, 255, 255, 0.92);
         padding: 3rem;
@@ -32,15 +30,15 @@ st.markdown("""
         position: relative;
     }
 
-    /* ELIMINACIÓN DE FONDO BLANCO: La clave está aquí */
+    /* Attempting to blend logos by removing white backgrounds */
     [data-testid="stSidebar"] img, 
     .stImage > img {
         background-color: transparent !important;
-        mix-blend-mode: multiply; /* Elimina el blanco y deja pasar el fondo */
+        mix-blend-mode: multiply; /* Blends white with the background */
         border: none !important;
     }
 
-    /* Gota de agua sutil en el reporte */
+    /* Subtle background watermark */
     .main .block-container::before {
         content: "";
         position: absolute;
@@ -56,11 +54,11 @@ st.markdown("""
         z-index: 0;
     }
 
-    /* Alineación Sidebar Homogénea */
+    /* Sidebar Alignment */
     .sidebar-brand-horizontal {
         display: flex;
         align-items: center;
-        gap: 10px;
+        gap: 15px;
         margin-bottom: 25px;
     }
     </style>
@@ -69,7 +67,7 @@ st.markdown("""
 def obtener_hora_peru():
     return datetime.now(timezone.utc) - timedelta(hours=5)
 
-# --- JAVASCRIPT DE FOCO INTELIGENTE (NO ROBA EL CURSOR) ---
+# --- JAVASCRIPT DE FOCO INTELIGENTE ---
 components.html("""
     <script>
     const forceFocus = () => {
@@ -97,14 +95,14 @@ if "reset_key" not in st.session_state: st.session_state.reset_key = 0
 # --- 3. INTERFAZ LATERAL ---
 modo = "Marcación"
 with st.sidebar:
-    # --- LOGO PEQUEÑO AL COSTADO (TRANSPARENTE) ---
+    # --- LARGER WOLF ICON (Now 48px) ---
     st.markdown("<div class='sidebar-brand-horizontal'>", unsafe_allow_html=True)
-    c_side_logo, c_side_text = st.columns([0.25, 0.75])
+    c_side_logo, c_side_text = st.columns([0.3, 0.7]) # Adjusted ratio for larger icon
     with c_side_logo:
         if os.path.exists("Lobo.png"):
-            st.image("Lobo.png", width=32)
+            st.image("Lobo.png", width=48) # Increased width
     with c_side_text:
-        st.markdown("<h2 style='color: #1E3A8A; font-size: 20px; margin: 0; padding-top: 5px;'>Gestión Lobo</h2>", unsafe_allow_html=True)
+        st.markdown("<h2 style='color: #1E3A8A; font-size: 20px; margin: 0; padding-top: 10px;'>Gestión Lobo</h2>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
     
     st.divider()
@@ -112,11 +110,12 @@ with st.sidebar:
         clave = st.text_input("Contraseña:", type="password")
         if clave == "Lobo2026": modo = "Admin"
 
-# --- 4. CABECERA PRINCIPAL (BAJADA Y TRANSPARENTE) ---
+# --- 4. CABECERA PRINCIPAL ---
 c_izq, c_logo_p, c_tit, c_der = st.columns([0.5, 3.5, 6, 0.5])
 with c_logo_p:
     if os.path.exists("logo_lobo.png"):
         st.markdown("<div style='padding-top: 40px;'>", unsafe_allow_html=True)
+        # Main logo transparency still best handled by file preparation
         st.image("logo_lobo.png", width=320)
         st.markdown("</div>", unsafe_allow_html=True)
 with c_tit:
@@ -133,7 +132,6 @@ if modo == "Marcación":
     st.write("### DIGITE SU DNI:")
     c_dni, _ = st.columns([1, 4])
     with c_dni:
-        # SE MANTIENE EL DNI DE 12 CARACTERES
         dni_in = st.text_input("DNI", key=f"dni_{st.session_state.reset_key}", label_visibility="collapsed", max_chars=12)
 
     if dni_in:
@@ -151,7 +149,7 @@ if modo == "Marcación":
                 if st.button("📤 SALIDA", use_container_width=True): st.success("SALIDA REGISTRADA")
         else: st.error("DNI no registrado.")
 
-else: # --- PANEL ADMIN CON FILTROS ---
+else: # --- PANEL ADMIN ---
     st.header("📋 Reporte Auditado de Asistencia")
     df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
     
