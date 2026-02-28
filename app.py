@@ -12,33 +12,36 @@ COSTO_MINUTO = 0.15
 HORA_ENTRADA_OFICIAL = "08:00:00" 
 TOLERANCIA_MENSUAL = 30 
 
-# --- ESTILOS CSS ---
+# --- ESTILOS CSS: FUSIÓN DE LOGOS + DISEÑO CORPORATIVO ---
 st.markdown("""
     <style>
+    /* Fondo de oficina profesional */
     .stApp {
-        background-image: linear-gradient(rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.8)), 
+        background-image: linear-gradient(rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0.82)), 
         url("https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=1350&q=80");
         background-size: cover;
         background-attachment: fixed;
     }
     
+    /* Contenedor principal con transparencia */
     .main .block-container {
-        background-color: rgba(255, 255, 255, 0.92);
+        background-color: rgba(255, 255, 255, 0.94);
         padding: 3rem;
         border-radius: 20px;
-        box-shadow: 0 15px 35px rgba(0,0,0,0.1);
+        box-shadow: 0 15px 35px rgba(0,0,0,0.12);
         position: relative;
     }
 
-    /* Attempting to blend logos by removing white backgrounds */
+    /* ELIMINAR FONDO BLANCO DE LOS LOGOS */
+    /* Este filtro mezcla el blanco con el fondo de la oficina */
     [data-testid="stSidebar"] img, 
     .stImage > img {
         background-color: transparent !important;
-        mix-blend-mode: multiply; /* Blends white with the background */
+        mix-blend-mode: multiply; 
         border: none !important;
     }
 
-    /* Subtle background watermark */
+    /* Marca de agua sutil en el reporte */
     .main .block-container::before {
         content: "";
         position: absolute;
@@ -54,7 +57,7 @@ st.markdown("""
         z-index: 0;
     }
 
-    /* Sidebar Alignment */
+    /* Alineación de Sidebar */
     .sidebar-brand-horizontal {
         display: flex;
         align-items: center;
@@ -67,7 +70,7 @@ st.markdown("""
 def obtener_hora_peru():
     return datetime.now(timezone.utc) - timedelta(hours=5)
 
-# --- JAVASCRIPT DE FOCO INTELIGENTE ---
+# --- JAVASCRIPT DE FOCO INTELIGENTE (CORREGIDO) ---
 components.html("""
     <script>
     const forceFocus = () => {
@@ -95,14 +98,14 @@ if "reset_key" not in st.session_state: st.session_state.reset_key = 0
 # --- 3. INTERFAZ LATERAL ---
 modo = "Marcación"
 with st.sidebar:
-    # --- LARGER WOLF ICON (Now 48px) ---
+    # --- LOBO MÁS GRANDE (48px) Y HOMOGÉNEO ---
     st.markdown("<div class='sidebar-brand-horizontal'>", unsafe_allow_html=True)
-    c_side_logo, c_side_text = st.columns([0.3, 0.7]) # Adjusted ratio for larger icon
+    c_side_logo, c_side_text = st.columns([0.3, 0.7])
     with c_side_logo:
         if os.path.exists("Lobo.png"):
-            st.image("Lobo.png", width=48) # Increased width
+            st.image("Lobo.png", width=48)
     with c_side_text:
-        st.markdown("<h2 style='color: #1E3A8A; font-size: 20px; margin: 0; padding-top: 10px;'>Gestión Lobo</h2>", unsafe_allow_html=True)
+        st.markdown("<h2 style='color: #1E3A8A; font-size: 21px; margin: 0; padding-top: 10px;'>Gestión Lobo</h2>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
     
     st.divider()
@@ -110,12 +113,11 @@ with st.sidebar:
         clave = st.text_input("Contraseña:", type="password")
         if clave == "Lobo2026": modo = "Admin"
 
-# --- 4. CABECERA PRINCIPAL ---
+# --- 4. CABECERA PRINCIPAL (CON LOGO TRANSPARENTE) ---
 c_izq, c_logo_p, c_tit, c_der = st.columns([0.5, 3.5, 6, 0.5])
 with c_logo_p:
     if os.path.exists("logo_lobo.png"):
         st.markdown("<div style='padding-top: 40px;'>", unsafe_allow_html=True)
-        # Main logo transparency still best handled by file preparation
         st.image("logo_lobo.png", width=320)
         st.markdown("</div>", unsafe_allow_html=True)
 with c_tit:
@@ -149,7 +151,7 @@ if modo == "Marcación":
                 if st.button("📤 SALIDA", use_container_width=True): st.success("SALIDA REGISTRADA")
         else: st.error("DNI no registrado.")
 
-else: # --- PANEL ADMIN ---
+else: # --- PANEL ADMIN CON FILTROS Y TOTALES ---
     st.header("📋 Reporte Auditado de Asistencia")
     df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
     
