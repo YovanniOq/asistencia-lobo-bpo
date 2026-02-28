@@ -12,7 +12,7 @@ COSTO_MINUTO = 0.15
 HORA_ENTRADA_OFICIAL = "08:00:00" 
 TOLERANCIA_MENSUAL = 30 
 
-# --- ESTILOS CSS: FONDO, MARCA DE AGUA Y DISEÑO ---
+# --- ESTILOS CSS: FONDO, MARCA DE AGUA Y ALINEACIÓN HOMOGÉNEA ---
 st.markdown("""
     <style>
     /* Fondo de oficina general */
@@ -51,7 +51,25 @@ st.markdown("""
         z-index: 0;
     }
 
-    .sidebar-brand { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
+    /* Alineación vertical HOMOGÉNEA para el lobo y el título */
+    .sidebar-brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 20px;
+        justify-content: flex-start; /* Alinea al inicio */
+    }
+    .sidebar-brand img {
+        vertical-align: middle; /* Alineación vertical de la imagen */
+    }
+    .sidebar-brand h2 {
+        color: #1E3A8A;
+        font-size: 20px; /* Tamaño de fuente ajustado para homogeneidad */
+        margin: 0;
+        padding: 0;
+        display: flex;
+        align-items: center; /* Centrado vertical del texto */
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -113,12 +131,11 @@ def registrar_en_nube(dni, nombre, tipo):
 # --- 4. INTERFAZ ---
 modo = "Marcación"
 with st.sidebar:
+    # --- CABECERA: LOBO ANIMAL + GESTIÓN LOBO CON ALINEACIÓN HOMOGÉNEA ---
     st.markdown("""<div class='sidebar-brand'>""", unsafe_allow_html=True)
-    c1, c2 = st.columns([1, 4])
-    with c1:
-        if os.path.exists("Lobo.png"): st.image("Lobo.png", width=40)
-    with c2:
-        st.markdown("<h2 style='color: #1E3A8A; font-size: 22px; margin: 0; padding-top: 5px;'>Gestión Lobo</h2>", unsafe_allow_html=True)
+    if os.path.exists("Lobo.png"):
+        st.image("Lobo.png", width=35) # Tamaño de imagen ajustado ligeramente
+    st.markdown("<h2>Gestión Lobo</h2>", unsafe_allow_html=True)
     st.markdown("""</div>""", unsafe_allow_html=True)
     
     st.divider()
@@ -161,7 +178,7 @@ if modo == "Marcación":
                 if st.button("📤 SALIDA", use_container_width=True): registrar_en_nube(dni_in, nombre, "SALIDA")
         else: st.error("DNI no registrado.")
 
-else: # --- PANEL ADMIN CON MARCA DE AGUA ---
+else: # --- PANEL ADMIN CON MARCA DE AGUA Y AUDITORÍA ---
     st.header("📋 Reporte Auditado de Asistencia")
     df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
     
