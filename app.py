@@ -11,7 +11,7 @@ COSTO_MINUTO = 0.15
 HORA_ENTRADA_OFICIAL = "08:00:00" 
 TOLERANCIA_MENSUAL = 30 
 
-# --- ESTILOS CSS: LOGOS LIMPIOS Y DISEÑO ---
+# --- ESTILOS CSS: AJUSTE DE ALTURA DEL LOGO ---
 st.markdown("""
     <style>
     .stApp {
@@ -26,7 +26,7 @@ st.markdown("""
         border-radius: 20px;
         box-shadow: 0 15px 35px rgba(0,0,0,0.1);
     }
-    /* Limpieza de logos aplicada a todas las imágenes */
+    /* Limpieza de logos y transparencia */
     img {
         background-color: transparent !important;
         mix-blend-mode: multiply;
@@ -76,15 +76,21 @@ with st.sidebar:
         clave = st.text_input("Contraseña:", type="password")
         if clave == "Lobo2026": modo = "Admin"
 
-# --- 4. CABECERA PRINCIPAL ---
+# --- 4. CABECERA PRINCIPAL (CON AJUSTE DE ALTURA) ---
 c_izq, c_logo_p, c_tit, c_der = st.columns([0.5, 3.5, 6, 0.5])
 with c_logo_p:
     if os.path.exists("logo_lobo.png"):
-        st.markdown("<div style='padding-top: 40px;'>", unsafe_allow_html=True)
+        # Se reduce el padding-top para subir el logo
+        st.markdown("<div style='padding-top: 15px;'>", unsafe_allow_html=True)
         st.image("logo_lobo.png", width=320)
         st.markdown("</div>", unsafe_allow_html=True)
 with c_tit:
-    st.markdown("<div style='padding-top: 15px;'><h1 style='color: #1E3A8A; font-size: 50px; margin-bottom: 0px;'>Marcación Sr. Lobo</h1><h2 style='color: #444; font-size: 26px; margin-top: -10px;'>Sr. Lobo BPO Solutions</h2></div>", unsafe_allow_html=True)
+    st.markdown("""
+        <div style='padding-top: 15px;'>
+            <h1 style='color: #1E3A8A; font-size: 50px; margin-bottom: 0px;'>Marcación Sr. Lobo</h1>
+            <h2 style='color: #444; font-size: 26px; margin-top: -10px;'>Sr. Lobo BPO Solutions</h2>
+        </div>
+    """, unsafe_allow_html=True)
 
 st.divider()
 
@@ -108,16 +114,14 @@ if modo == "Marcación":
                 if st.button("📤 SALIDA", use_container_width=True): st.success("SALIDA REGISTRADA")
         else: st.error("DNI no registrado.")
 
-else: # --- PANEL ADMIN (RESTAURADO) ---
+else: # --- PANEL ADMIN CON REPORTES ---
     st.header("📋 Reporte Auditado de Asistencia")
     df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
     
     if not df_h.empty:
-        # Convertir fechas para filtrar
         df_h['Fecha_dt'] = pd.to_datetime(df_h['Fecha'], errors='coerce')
         meses_dict = {1:"Ene", 2:"Feb", 3:"Mar", 4:"Abr", 5:"May", 6:"Jun", 7:"Jul", 8:"Ago", 9:"Sep", 10:"Oct", 11:"Nov", 12:"Dic"}
         
-        # Filtros en columnas
         f1, f2, f3 = st.columns(3)
         with f1: sel_anio = st.selectbox("Año", sorted(df_h['Fecha_dt'].dt.year.unique(), reverse=True))
         with f2:
@@ -127,21 +131,16 @@ else: # --- PANEL ADMIN (RESTAURADO) ---
             nombres = sorted(df_h[(df_h['Fecha_dt'].dt.year == sel_anio) & (df_h['Fecha_dt'].dt.month == sel_mes)]['Nombre'].unique())
             sel_nombre = st.selectbox("Trabajador", ["TODOS"] + nombres)
         
-        # Aplicar filtros al DataFrame
         df_f = df_h[(df_h['Fecha_dt'].dt.year == sel_anio) & (df_h['Fecha_dt'].dt.month == sel_mes)].copy()
         if sel_nombre != "TODOS":
             df_f = df_f[df_f['Nombre'] == sel_nombre]
 
-        # Tabla de Marcaciones
         st.dataframe(df_f.drop(columns=['Fecha_dt']), use_container_width=True)
         
-        # Resumen de Auditoría y Descuentos
         st.subheader("💰 Resumen de Auditoría")
         resumen = df_f.groupby('Nombre')['Tardanza_Min'].sum().reset_index()
         resumen['Excedente'] = resumen['Tardanza_Min'].apply(lambda x: (x - TOLERANCIA_MENSUAL) if x > TOLERANCIA_MENSUAL else 0)
         resumen['Descuento (S/)'] = resumen['Excedente'] * COSTO_MINUTO
         
         st.table(resumen)
-        st.metric("Total a Descontar en Planilla", f"S/ {resumen['Descuento (S/)'].sum():.2f}")
-    else:
-        st.warning("No hay datos registrados en la hoja de cálculo.")
+        st.metric("Total General a Descontar", f"S/ {resumen['Descuento (S/)'].sum():.2f}")
