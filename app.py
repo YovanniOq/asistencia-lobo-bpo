@@ -4,6 +4,7 @@ import pandas as pd
 from datetime import datetime, timedelta, timezone
 import os
 import time
+import base64
 import streamlit.components.v1 as components
 
 # --- 1. CONFIGURACIÓN ---
@@ -12,11 +13,11 @@ COSTO_MINUTO = 0.15
 HORA_ENTRADA_OFICIAL = "08:00:00" 
 TOLERANCIA_MENSUAL = 30 
 
-# --- ESTILOS CSS: FONDO + RECORTE DE LOBO PRECISO ---
+# --- ESTILOS CSS: FONDO DE OFICINA ---
 st.markdown("""
     <style>
     .stApp {
-        background-image: linear-gradient(rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.85)), 
+        background-image: linear-gradient(rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.8)), 
         url("https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=1350&q=80");
         background-size: cover;
         background-attachment: fixed;
@@ -26,27 +27,7 @@ st.markdown("""
         padding: 3rem;
         border-radius: 15px;
         box-shadow: 0 10px 30px rgba(0,0,0,0.15);
-    }
-    /* El contenedor del recorte del lobo */
-    .lobo-container {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        margin-bottom: 25px;
-    }
-    .crop-box {
-        width: 50px;
-        height: 50px;
-        overflow: hidden;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        border-radius: 8px;
-    }
-    .crop-box img {
-        width: 195px; /* Tamaño total para escalar */
-        margin-left: 142px; /* Mueve la imagen para centrar el lobo y ocultar 'SR' */
-        margin-top: -2px;
+        margin-top: 2rem;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -109,25 +90,23 @@ def registrar_en_nube(dni, nombre, tipo):
 # --- 4. INTERFAZ ---
 modo = "Marcación"
 with st.sidebar:
-    # --- EL LOBO RECORTADO + GESTIÓN LOBO ---
-    if os.path.exists("logo_lobo.png"):
-        st.markdown(f"""
-            <div class="lobo-container">
-                <div class="crop-box">
-                    <img src="https://raw.githubusercontent.com/Yovanni/asistencia/main/logo_lobo.png">
-                </div>
-                <h1 style='color: #1E3A8A; font-size: 24px; margin: 0; white-space: nowrap;'>Gestión Lobo</h1>
-            </div>
-        """, unsafe_allow_html=True)
-    else:
-        st.title("Gestión Lobo")
+    # --- EL LOBO AZUL (BASE64) ANTEPUESTO A GESTIÓN LOBO ---
+    # Imagen del animal incrustada directamente
+    lobo_b64 = "iVBORw0KGgoAAAANSUhEUgAAAGQAAACCCAMAAACp8v9fAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAAlQTFRF////3+DfpKSkqf99AAAAAAAAsX5zVAAAAAN0Uk5T//8A18o9BAAAAI9JREFUeNrs2MENwCAQA0FX6L9pE0hIn70DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DInZIn60DAgYAn/YCH9mPqXMAAAAASUVORK5CYII="
+    
+    st.markdown(f"""
+        <div style='display: flex; align-items: center; gap: 12px; margin-bottom: 25px;'>
+            <img src='data:image/png;base64,{lobo_b64}' style='width: 45px; height: 45px; object-fit: contain;'>
+            <h1 style='color: #1E3A8A; font-size: 26px; margin: 0; white-space: nowrap;'>Gestión Lobo</h1>
+        </div>
+    """, unsafe_allow_html=True)
     
     st.divider()
     if st.checkbox("Acceso Administrador"):
         clave = st.text_input("Contraseña:", type="password")
         if clave == "Lobo2026": modo = "Admin"
 
-# Cabecera principal
+# Cabecera principal (RESTAURADA A 50PX)
 c_izq, c_logo, c_tit, c_der = st.columns([1, 3, 6, 1])
 with c_logo:
     if os.path.exists("logo_lobo.png"):
@@ -147,6 +126,7 @@ if modo == "Marcación":
     st.write("### DIGITE SU DNI:")
     c_dni, _ = st.columns([1, 4])
     with c_dni:
+        # SE MANTIENEN LOS 12 CARACTERES
         dni_in = st.text_input("DNI", key=f"dni_{st.session_state.reset_key}", label_visibility="collapsed", max_chars=12)
 
     if dni_in:
@@ -183,6 +163,7 @@ else: # --- PANEL ADMIN COMPLETO ---
         
         df_mes = df_h[(df_h['Fecha_dt'].dt.year == sel_anio) & (df_h['Fecha_dt'].dt.month == sel_mes)].copy()
 
+        # Auditoría y Totales
         resumen = df_mes.groupby('Nombre')['Tardanza_Min'].sum().reset_index()
         resumen['Excedente'] = resumen['Tardanza_Min'].apply(lambda x: (x - TOLERANCIA_MENSUAL) if x > TOLERANCIA_MENSUAL else 0)
         resumen['Descuento'] = resumen['Excedente'] * COSTO_MINUTO
@@ -191,7 +172,11 @@ else: # --- PANEL ADMIN COMPLETO ---
             df_mes = df_mes[df_mes['Nombre'] == sel_nombre]
             resumen = resumen[resumen['Nombre'] == sel_nombre]
 
+        st.subheader("Historial Detallado")
         st.dataframe(df_mes.drop(columns=['Fecha_dt']), use_container_width=True)
-        st.subheader("💰 Resumen de Auditoría")
+        
+        st.subheader("💰 Resumen de Auditoría (Bolsa 30 min)")
         st.table(resumen)
-        st.metric("Total a Descontar", f"S/ {resumen['Descuento'].sum():.2f}")
+
+        total_desc = resumen['Descuento'].sum()
+        st.metric("Total General a Descontar", f"S/ {total_desc:.2f}")
