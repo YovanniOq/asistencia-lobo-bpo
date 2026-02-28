@@ -12,11 +12,11 @@ COSTO_MINUTO = 0.15
 HORA_ENTRADA_OFICIAL = "08:00:00" 
 TOLERANCIA_MENSUAL = 30 
 
-# --- ESTILOS CSS: FONDO DE OFICINA + RECORTE DE LOBO PRECISO ---
+# --- ESTILOS CSS: FONDO DE OFICINA + RECORTE DE LOBO ---
 st.markdown("""
     <style>
     .stApp {
-        background-image: linear-gradient(rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0.82)), 
+        background-image: linear-gradient(rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.8)), 
         url("https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=1350&q=80");
         background-size: cover;
         background-attachment: fixed;
@@ -28,26 +28,26 @@ st.markdown("""
         box-shadow: 0 10px 30px rgba(0,0,0,0.15);
         margin-top: 2rem;
     }
-    /* El contenedor del recorte del lobo alineado con el texto */
-    .sidebar-header-container {
+    /* El contenedor del lobo animal antepuesto */
+    .sidebar-header {
         display: flex;
         align-items: center;
         gap: 12px;
         margin-bottom: 25px;
     }
-    .crop-circle {
-        width: 50px;
-        height: 50px;
+    .lobo-animal-crop {
+        width: 52px;
+        height: 52px;
         overflow: hidden;
         display: flex;
-        align-items: center;
         justify-content: center;
+        align-items: center;
         border-radius: 8px;
     }
-    .crop-circle img {
-        width: 220px; /* Tamaño para escalar el logo original */
-        margin-left: 160px; /* Mueve la imagen para ocultar 'Sr. Lobo' y centrar el animal */
-        margin-top: -2px;
+    .lobo-animal-crop img {
+        width: 235px; /* Tamaño para escalar */
+        margin-left: 172px; /* Mueve la imagen para mostrar solo la cabeza del lobo */
+        margin-top: -4px;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -110,14 +110,14 @@ def registrar_en_nube(dni, nombre, tipo):
 # --- 4. INTERFAZ ---
 modo = "Marcación"
 with st.sidebar:
-    # --- EL LOBO RECORTADO JUSTO AL LADO DE GESTIÓN LOBO ---
+    # --- CABECERA: LOBO ANIMAL + GESTIÓN LOBO ---
     if os.path.exists("logo_lobo.png"):
         st.markdown(f"""
-            <div class="sidebar-header-container">
-                <div class="crop-circle">
-                    <img src="https://raw.githubusercontent.com/Yovanni/asistencia/main/logo_lobo.png">
+            <div class='sidebar-header'>
+                <div class='lobo-animal-crop'>
+                    <img src='https://raw.githubusercontent.com/Yovanni/asistencia/main/logo_lobo.png'>
                 </div>
-                <h1 style='color: #1E3A8A; font-size: 26px; margin: 0; white-space: nowrap;'>Gestión Lobo</h1>
+                <h1 style='color: #1E3A8A; font-size: 25px; margin: 0; white-space: nowrap;'>Gestión Lobo</h1>
             </div>
         """, unsafe_allow_html=True)
     else:
@@ -128,7 +128,7 @@ with st.sidebar:
         clave = st.text_input("Contraseña:", type="password")
         if clave == "Lobo2026": modo = "Admin"
 
-# Cabecera principal (RESTAURADA A 50PX Y CENTRADA)
+# Cabecera principal (RESTAURADA)
 c_izq, c_logo, c_tit, c_der = st.columns([1, 3, 6, 1])
 with c_logo:
     if os.path.exists("logo_lobo.png"):
@@ -166,39 +166,18 @@ if modo == "Marcación":
                 if st.button("📤 SALIDA", use_container_width=True): registrar_en_nube(dni_in, nombre, "SALIDA")
         else: st.error("DNI no registrado.")
 
-else: # --- PANEL ADMIN COMPLETO: REPORTES, FILTROS Y TOTALES ---
+else: # --- PANEL ADMIN: REPORTES, FILTROS Y TOTALES ---
     st.header("📋 Reporte Auditado de Asistencia")
     df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
     
     if not df_h.empty:
         df_h['Fecha_dt'] = pd.to_datetime(df_h['Fecha'], errors='coerce')
-        meses_dict = {1:"Ene", 2:"Feb", 3:"Mar", 4:"Abr", 5:"May", 6:"Jun", 7:"Jul", 8:"Ago", 9:"Sep", 10:"Oct", 11:"Nov", 12:"Dic"}
-        
-        f1, f2, f3 = st.columns(3)
-        with f1: sel_anio = st.selectbox("Año", sorted(df_h['Fecha_dt'].dt.year.unique(), reverse=True))
-        with f2:
-            m_disp = sorted(df_h[df_h['Fecha_dt'].dt.year == sel_anio]['Fecha_dt'].dt.month.unique())
-            sel_mes = st.selectbox("Mes", m_disp, format_func=lambda x: meses_dict[x])
-        with f3:
-            nombres = sorted(df_h[(df_h['Fecha_dt'].dt.year == sel_anio) & (df_h['Fecha_dt'].dt.month == sel_mes)]['Nombre'].unique())
-            sel_nombre = st.selectbox("Trabajador", ["TODOS"] + nombres)
-        
-        df_mes = df_h[(df_h['Fecha_dt'].dt.year == sel_anio) & (df_h['Fecha_dt'].dt.month == sel_mes)].copy()
-
-        # Resumen y Totales
-        resumen = df_mes.groupby('Nombre')['Tardanza_Min'].sum().reset_index()
+        # Lógica de Auditoría restaurada
+        resumen = df_h.groupby('Nombre')['Tardanza_Min'].sum().reset_index()
         resumen['Excedente'] = resumen['Tardanza_Min'].apply(lambda x: (x - TOLERANCIA_MENSUAL) if x > TOLERANCIA_MENSUAL else 0)
         resumen['Descuento'] = resumen['Excedente'] * COSTO_MINUTO
-
-        if sel_nombre != "TODOS":
-            df_mes = df_mes[df_mes['Nombre'] == sel_nombre]
-            resumen = resumen[resumen['Nombre'] == sel_nombre]
-
-        st.subheader("Historial Detallado")
-        st.dataframe(df_mes.drop(columns=['Fecha_dt']), use_container_width=True)
         
-        st.subheader("💰 Resumen de Auditoría (Bolsa 30 min)")
+        st.dataframe(df_h.drop(columns=['Fecha_dt']), use_container_width=True)
+        st.subheader("💰 Auditoría de Planilla")
         st.table(resumen)
-
-        total_desc = resumen['Descuento'].sum()
-        st.metric("Total General a Descontar", f"S/ {total_desc:.2f}")
+        st.metric("Total a Descontar", f"S/ {resumen['Descuento'].sum():.2f}")
