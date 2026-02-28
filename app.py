@@ -16,7 +16,7 @@ TOLERANCIA_MENSUAL = 30
 st.markdown("""
     <style>
     .stApp {
-        background-image: linear-gradient(rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.8)), 
+        background-image: linear-gradient(rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.85)), 
         url("https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=1350&q=80");
         background-size: cover;
         background-attachment: fixed;
@@ -28,14 +28,14 @@ st.markdown("""
         box-shadow: 0 10px 30px rgba(0,0,0,0.15);
         margin-top: 2rem;
     }
-    /* El contenedor del lobo animal antepuesto */
-    .sidebar-header {
+    /* Estilo para el lobo animal antepuesto */
+    .lobo-header {
         display: flex;
         align-items: center;
         gap: 12px;
         margin-bottom: 25px;
     }
-    .lobo-animal-crop {
+    .crop-lobo {
         width: 52px;
         height: 52px;
         overflow: hidden;
@@ -44,9 +44,9 @@ st.markdown("""
         align-items: center;
         border-radius: 8px;
     }
-    .lobo-animal-crop img {
-        width: 235px; /* Tamaño para escalar */
-        margin-left: 172px; /* Mueve la imagen para mostrar solo la cabeza del lobo */
+    .crop-lobo img {
+        width: 235px; /* Escala del logo original */
+        margin-left: 172px; /* Oculta 'Sr.' y centra el lobo animal */
         margin-top: -4px;
     }
     </style>
@@ -103,7 +103,7 @@ def registrar_en_nube(dni, nombre, tipo):
         df_final = pd.concat([df_h, nueva_fila], ignore_index=True)
         conn.update(spreadsheet=url_hoja, worksheet="Sheet1", data=df_final)
         
-        st.success(f"✅ {tipo} REGISTRADO")
+        st.success(f"✅ {tipo} REGISTRADO CORRECTAMENTE")
         time.sleep(1.2); st.session_state.reset_key += 1; st.rerun()
     except Exception as e: st.error(f"Error: {e}")
 
@@ -113,8 +113,8 @@ with st.sidebar:
     # --- CABECERA: LOBO ANIMAL + GESTIÓN LOBO ---
     if os.path.exists("logo_lobo.png"):
         st.markdown(f"""
-            <div class='sidebar-header'>
-                <div class='lobo-animal-crop'>
+            <div class='lobo-header'>
+                <div class='crop-lobo'>
                     <img src='https://raw.githubusercontent.com/Yovanni/asistencia/main/logo_lobo.png'>
                 </div>
                 <h1 style='color: #1E3A8A; font-size: 25px; margin: 0; white-space: nowrap;'>Gestión Lobo</h1>
@@ -128,7 +128,7 @@ with st.sidebar:
         clave = st.text_input("Contraseña:", type="password")
         if clave == "Lobo2026": modo = "Admin"
 
-# Cabecera principal (RESTAURADA)
+# Cabecera principal
 c_izq, c_logo, c_tit, c_der = st.columns([1, 3, 6, 1])
 with c_logo:
     if os.path.exists("logo_lobo.png"):
@@ -148,7 +148,7 @@ if modo == "Marcación":
     st.write("### DIGITE SU DNI:")
     c_dni, _ = st.columns([1, 4])
     with c_dni:
-        # SE MANTIENE EL DNI DE 12 CARACTERES
+        # SE MANTIENE EL LÍMITE DE 12 CARACTERES
         dni_in = st.text_input("DNI", key=f"dni_{st.session_state.reset_key}", label_visibility="collapsed", max_chars=12)
 
     if dni_in:
@@ -159,10 +159,10 @@ if modo == "Marcación":
         if not emp.empty:
             nombre = emp.iloc[0]['Nombre']
             st.info(f"👤 TRABAJADOR: {nombre}")
-            c_btns = st.columns(2)
-            with c_btns[0]:
+            c1, c2 = st.columns(2)
+            with c1:
                 if st.button("📥 INGRESO", use_container_width=True): registrar_en_nube(dni_in, nombre, "INGRESO")
-            with c_btns[1]:
+            with c2:
                 if st.button("📤 SALIDA", use_container_width=True): registrar_en_nube(dni_in, nombre, "SALIDA")
         else: st.error("DNI no registrado.")
 
@@ -172,7 +172,7 @@ else: # --- PANEL ADMIN: REPORTES, FILTROS Y TOTALES ---
     
     if not df_h.empty:
         df_h['Fecha_dt'] = pd.to_datetime(df_h['Fecha'], errors='coerce')
-        # Lógica de Auditoría restaurada
+        # Auditoría completa restaurada
         resumen = df_h.groupby('Nombre')['Tardanza_Min'].sum().reset_index()
         resumen['Excedente'] = resumen['Tardanza_Min'].apply(lambda x: (x - TOLERANCIA_MENSUAL) if x > TOLERANCIA_MENSUAL else 0)
         resumen['Descuento'] = resumen['Excedente'] * COSTO_MINUTO
