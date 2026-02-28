@@ -55,21 +55,28 @@ with st.sidebar:
     st.markdown("</div>", unsafe_allow_html=True)
     
     st.divider()
+    # Guardamos el estado del checkbox para controlar el foco
     acceso_admin = st.checkbox("Acceso Administrador")
+    
     if acceso_admin:
         clave = st.text_input("Contraseña:", type="password")
         if clave == "Lobo2026": modo = "Admin"
 
-# --- JAVASCRIPT DE FOCO INTELIGENTE (CORREGIDO PARA ADMIN) ---
-# Solo se ejecuta si NO estamos en modo Admin
-if modo == "Marcación":
+# --- JAVASCRIPT DE FOCO INTELIGENTE MEJORADO ---
+# SOLO se activa si NO hemos marcado el checkbox de administrador
+if not acceso_admin:
     components.html("""
         <script>
         const forceFocus = () => {
             const inputs = window.parent.document.querySelectorAll('input[type="text"]');
+            const passInputs = window.parent.document.querySelectorAll('input[type="password"]');
+            
             if (inputs.length > 0) {
                 const dniInput = inputs[0];
-                if (window.parent.document.activeElement !== dniInput) {
+                const activeElem = window.parent.document.activeElement;
+                
+                // Si el usuario está en un campo de texto y no es el DNI, y no hay passwords activos
+                if (activeElem !== dniInput && passInputs.length === 0) {
                     dniInput.focus();
                 }
             }
@@ -78,7 +85,7 @@ if modo == "Marcación":
         </script>
     """, height=0)
 
-# --- 4. CABECERA PRINCIPAL ---
+# --- 4. CABECERA PRINCIPAL (LOGO ELEVADO) ---
 c_izq, c_logo_p, c_tit, c_der = st.columns([0.5, 3.5, 6, 0.5])
 with c_logo_p:
     if os.path.exists("logo_lobo.png"):
@@ -118,7 +125,7 @@ if modo == "Marcación":
         else:
             st.error("DNI no registrado.")
 
-else: # --- PANEL ADMIN (SIN INTERRUPCIONES DE FOCO) ---
+else: # --- PANEL ADMIN ---
     st.header("📋 Reporte Auditado de Asistencia")
     df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
     
