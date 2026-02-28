@@ -12,7 +12,7 @@ COSTO_MINUTO = 0.15
 HORA_ENTRADA_OFICIAL = "08:00:00" 
 TOLERANCIA_MENSUAL = 30 
 
-# --- ESTILOS CSS ---
+# --- ESTILOS CSS: FONDO, MARCA DE AGUA Y AJUSTE DE CABECERA ---
 st.markdown("""
     <style>
     .stApp {
@@ -28,6 +28,7 @@ st.markdown("""
         box-shadow: 0 10px 30px rgba(0,0,0,0.15);
         position: relative;
     }
+    /* Marca de agua sutil */
     .main .block-container::before {
         content: "";
         position: absolute;
@@ -41,6 +42,10 @@ st.markdown("""
         transform: translate(-50%, -50%);
         pointer-events: none;
         z-index: 0;
+    }
+    /* AJUSTE PARA BAJAR EL LOGO Y ALINEARLO CON EL TÍTULO */
+    .header-logo-container {
+        padding-top: 35px; /* Baja el logo para que no esté pegado arriba */
     }
     </style>
     """, unsafe_allow_html=True)
@@ -76,10 +81,10 @@ if "reset_key" not in st.session_state: st.session_state.reset_key = 0
 # --- 3. INTERFAZ LATERAL ---
 modo = "Marcación"
 with st.sidebar:
-    c_logo, c_text = st.columns([0.2, 0.8])
-    with c_logo:
+    c_logo_side, c_text_side = st.columns([0.2, 0.8])
+    with c_logo_side:
         if os.path.exists("Lobo.png"): st.image("Lobo.png", width=32)
-    with c_text:
+    with c_text_side:
         st.markdown("<h2 style='color: #1E3A8A; font-size: 20px; margin: 0; padding-top: 5px;'>Gestión Lobo</h2>", unsafe_allow_html=True)
     
     st.divider()
@@ -87,13 +92,16 @@ with st.sidebar:
         clave = st.text_input("Contraseña:", type="password")
         if clave == "Lobo2026": modo = "Admin"
 
-# --- 4. CABECERA PRINCIPAL ---
-c_izq, c_logo_p, c_tit, c_der = st.columns([1, 3, 6, 1])
+# --- 4. CABECERA PRINCIPAL (CON AJUSTE DE ALTURA) ---
+c_izq, c_logo_p, c_tit, c_der = st.columns([0.5, 3.5, 6, 0.5])
 with c_logo_p:
-    if os.path.exists("logo_lobo.png"): st.image("logo_lobo.png", width=300)
+    if os.path.exists("logo_lobo.png"):
+        st.markdown("<div class='header-logo-container'>", unsafe_allow_html=True)
+        st.image("logo_lobo.png", width=320)
+        st.markdown("</div>", unsafe_allow_html=True)
 with c_tit:
     st.markdown(f"""
-        <div style='padding-top: 15px;'>
+        <div style='padding-top: 45px;'>
             <h1 style='color: #1E3A8A; font-size: 50px; margin-bottom: 0px;'>Marcación Sr. Lobo</h1>
             <h3 style='color: #444; font-size: 26px; margin-top: -10px;'>Sr. Lobo BPO Solutions</h3>
         </div>
@@ -122,7 +130,7 @@ if modo == "Marcación":
                 if st.button("📤 SALIDA", use_container_width=True): st.success(f"SALIDA: {nombre}")
         else: st.error("DNI no registrado.")
 
-else: # --- PANEL ADMIN CON FILTROS RESTAURADOS ---
+else: # --- PANEL ADMIN CON FILTROS ---
     st.header("📋 Reporte Auditado de Asistencia")
     df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
     
@@ -130,7 +138,6 @@ else: # --- PANEL ADMIN CON FILTROS RESTAURADOS ---
         df_h['Fecha_dt'] = pd.to_datetime(df_h['Fecha'], errors='coerce')
         meses_dict = {1:"Ene", 2:"Feb", 3:"Mar", 4:"Abr", 5:"May", 6:"Jun", 7:"Jul", 8:"Ago", 9:"Sep", 10:"Oct", 11:"Nov", 12:"Dic"}
         
-        # --- FILTROS ---
         f1, f2, f3 = st.columns(3)
         with f1:
             anios = sorted(df_h['Fecha_dt'].dt.year.unique(), reverse=True)
@@ -142,10 +149,8 @@ else: # --- PANEL ADMIN CON FILTROS RESTAURADOS ---
             nombres = sorted(df_h[(df_h['Fecha_dt'].dt.year == sel_anio) & (df_h['Fecha_dt'].dt.month == sel_mes)]['Nombre'].unique())
             sel_nombre = st.selectbox("Trabajador", ["TODOS"] + nombres)
         
-        # Aplicar Filtros
         df_filtrado = df_h[(df_h['Fecha_dt'].dt.year == sel_anio) & (df_h['Fecha_dt'].dt.month == sel_mes)].copy()
         
-        # Cálculo de Resumen
         resumen = df_filtrado.groupby('Nombre')['Tardanza_Min'].sum().reset_index()
         resumen['Excedente'] = resumen['Tardanza_Min'].apply(lambda x: (x - TOLERANCIA_MENSUAL) if x > TOLERANCIA_MENSUAL else 0)
         resumen['Descuento'] = resumen['Excedente'] * COSTO_MINUTO
@@ -154,9 +159,6 @@ else: # --- PANEL ADMIN CON FILTROS RESTAURADOS ---
             df_filtrado = df_filtrado[df_filtrado['Nombre'] == sel_nombre]
             resumen = resumen[resumen['Nombre'] == sel_nombre]
 
-        st.subheader("Historial de Marcaciones")
         st.dataframe(df_filtrado.drop(columns=['Fecha_dt']), use_container_width=True)
-        
-        st.subheader("💰 Resumen de Auditoría")
         st.table(resumen)
         st.metric("Total a Descontar", f"S/ {resumen['Descuento'].sum():.2f}")
