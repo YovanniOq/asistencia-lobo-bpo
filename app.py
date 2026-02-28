@@ -12,35 +12,33 @@ COSTO_MINUTO = 0.15
 HORA_ENTRADA_OFICIAL = "08:00:00" 
 TOLERANCIA_MENSUAL = 30 
 
-# --- ESTILOS CSS: SOPORTE PARA TRANSPARENCIA ---
+# --- ESTILOS CSS: FUSIÓN DE LOGOS Y DISEÑO LIMPIO ---
 st.markdown("""
     <style>
-    /* Fondo de oficina profesional */
     .stApp {
-        background-image: linear-gradient(rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.85)), 
+        background-image: linear-gradient(rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.8)), 
         url("https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=1350&q=80");
         background-size: cover;
         background-attachment: fixed;
     }
     
-    /* Contenedor principal con transparencia */
     .main .block-container {
-        background-color: rgba(255, 255, 255, 0.95);
+        background-color: rgba(255, 255, 255, 0.94);
         padding: 3rem;
-        border-radius: 15px;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+        border-radius: 20px;
+        box-shadow: 0 15px 35px rgba(0,0,0,0.1);
         position: relative;
     }
 
-    /* ELIMINACIÓN DE FONDO BLANCO: Esta regla fuerza que Streamlit no ponga
-       fondos o bordes blancos alrededor de las imágenes con transparencia */
+    /* LIMPIEZA DE LOGOS: Elimina el fondo blanco y permite ver la oficina */
     [data-testid="stSidebar"] img, 
     .stImage > img {
         background-color: transparent !important;
-        mix-blend-mode: multiply; /* Ayuda a fusionar bordes si no son perfectos */
+        mix-blend-mode: multiply; /* Esta es la clave para la transparencia */
+        border: none !important;
     }
 
-    /* Gota de agua sutil del Lobo en el centro */
+    /* Gota de agua sutil en el reporte */
     .main .block-container::before {
         content: "";
         position: absolute;
@@ -56,12 +54,11 @@ st.markdown("""
         z-index: 0;
     }
 
-    /* Alineación de Sidebar */
+    /* Alineación Sidebar */
     .sidebar-brand-horizontal {
         display: flex;
-        flex-direction: row;
         align-items: center;
-        gap: 12px;
+        gap: 15px;
         margin-bottom: 25px;
     }
     </style>
@@ -98,24 +95,25 @@ if "reset_key" not in st.session_state: st.session_state.reset_key = 0
 # --- 3. INTERFAZ LATERAL ---
 modo = "Marcación"
 with st.sidebar:
-    # --- CABECERA: LOBO PEQUEÑO Y HOMOGÉNEO (TRANSPARENTE) ---
-    st.markdown(f"""
-        <div class="sidebar-brand-horizontal">
-            <img src="https://raw.githubusercontent.com/Yovanni/asistencia/main/Lobo.png" style="width: 35px;">
-            <h2 style='color: #1E3A8A; font-size: 22px; margin: 0;'>Gestión Lobo</h2>
-        </div>
-    """, unsafe_allow_html=True)
+    # --- LOBO RESTAURADO Y MÁS GRANDE (55px) ---
+    st.markdown("<div class='sidebar-brand-horizontal'>", unsafe_allow_html=True)
+    c_side_logo, c_side_text = st.columns([0.35, 0.65])
+    with c_side_logo:
+        if os.path.exists("Lobo.png"):
+            st.image("Lobo.png", width=55)
+    with c_side_text:
+        st.markdown("<h2 style='color: #1E3A8A; font-size: 21px; margin: 0; padding-top: 15px;'>Gestión Lobo</h2>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
     
     st.divider()
     if st.checkbox("Acceso Administrador"):
         clave = st.text_input("Contraseña:", type="password")
         if clave == "Lobo2026": modo = "Admin"
 
-# --- 4. CABECERA PRINCIPAL (CON LOGO CENTRAL TRANSPARENTE) ---
+# --- 4. CABECERA PRINCIPAL (CON LOGO CENTRAL LIMPIO) ---
 c_izq, c_logo_p, c_tit, c_der = st.columns([0.5, 3.5, 6, 0.5])
 with c_logo_p:
     if os.path.exists("logo_lobo.png"):
-        # Asegúrate de que logo_lobo.png sea un PNG transparente
         st.markdown("<div style='padding-top: 40px;'>", unsafe_allow_html=True)
         st.image("logo_lobo.png", width=320)
         st.markdown("</div>", unsafe_allow_html=True)
@@ -123,7 +121,7 @@ with c_tit:
     st.markdown(f"""
         <div style='padding-top: 15px;'>
             <h1 style='color: #1E3A8A; font-size: 50px; margin-bottom: 0px;'>Marcación Sr. Lobo</h1>
-            <h3 style='color: #444; font-size: 26px; margin-top: -10px;'>Sr. Lobo BPO Solutions</h3>
+            <h2 style='color: #444; font-size: 26px; margin-top: -10px;'>Sr. Lobo BPO Solutions</h2>
         </div>
     """, unsafe_allow_html=True)
 
@@ -136,7 +134,6 @@ if modo == "Marcación":
         dni_in = st.text_input("DNI", key=f"dni_{st.session_state.reset_key}", label_visibility="collapsed", max_chars=12)
 
     if dni_in:
-        # Lógica de marcación...
         st.cache_data.clear()
         df_emp = pd.read_csv("empleados.csv", dtype={'DNI': str})
         emp = df_emp[df_emp['DNI'] == str(dni_in).strip()]
@@ -144,14 +141,14 @@ if modo == "Marcación":
         if not emp.empty:
             nombre = emp.iloc[0]['Nombre']
             st.info(f"👤 TRABAJADOR: {nombre}")
-            c_btns = st.columns(2)
-            with c_btns[0]:
-                if st.button("📥 INGRESO", use_container_width=True): st.success(f"INGRESO REGISTRADO: {nombre}")
-            with c_btns[1]:
-                if st.button("📤 SALIDA", use_container_width=True): st.success(f"SALIDA REGISTRADA: {nombre}")
+            c1, c2 = st.columns(2)
+            with c1:
+                if st.button("📥 INGRESO", use_container_width=True): st.success("REGISTRADO")
+            with c2:
+                if st.button("📤 SALIDA", use_container_width=True): st.success("SALIDA")
         else: st.error("DNI no registrado.")
 
-else: # --- PANEL ADMIN ---
+else: # --- PANEL ADMIN CON FILTROS ---
     st.header("📋 Reporte Auditado de Asistencia")
     df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
     
@@ -179,6 +176,5 @@ else: # --- PANEL ADMIN ---
             resumen = resumen[resumen['Nombre'] == sel_nombre]
 
         st.dataframe(df_filtrado.drop(columns=['Fecha_dt']), use_container_width=True)
-        st.subheader("💰 Resumen de Auditoría")
         st.table(resumen)
         st.metric("Total General a Descontar", f"S/ {resumen['Descuento'].sum():.2f}")
