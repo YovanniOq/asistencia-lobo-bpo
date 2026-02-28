@@ -56,13 +56,14 @@ st.markdown("""
         flex-direction: row;
         align-items: center; /* Centrado vertical entre logo y texto */
         justify-content: flex-start;
-        gap: 10px;
-        margin-bottom: 20px;
+        gap: 12px;
+        margin-bottom: 25px;
         padding: 10px 0;
     }
     .sidebar-brand-horizontal img {
-        width: 35px;
-        height: auto;
+        width: 35px; /* Tamaño homogéneo */
+        height: 35px;
+        object-fit: contain;
     }
     .sidebar-brand-horizontal span {
         color: #1E3A8A;
@@ -133,7 +134,7 @@ def registrar_en_nube(dni, nombre, tipo):
 modo = "Marcación"
 with st.sidebar:
     # --- CABECERA HORIZONTAL: LOBO A LA IZQUIERDA DEL TEXTO ---
-    # Usamos HTML directo para forzar la posición horizontal
+    # Usamos HTML directo para forzar la posición horizontal exacta
     st.markdown(f"""
         <div class="sidebar-brand-horizontal">
             <img src="https://raw.githubusercontent.com/Yovanni/asistencia/main/Lobo.png">
@@ -146,7 +147,7 @@ with st.sidebar:
         clave = st.text_input("Contraseña:", type="password")
         if clave == "Lobo2026": modo = "Admin"
 
-# Cabecera principal (RESTAURADA A 50PX)
+# Cabecera principal (RESTAURADA A 50PX Y CENTRADA)
 c_izq, c_logo, c_tit, c_der = st.columns([1, 3, 6, 1])
 with c_logo:
     if os.path.exists("logo_lobo.png"): st.image("logo_lobo.png", width=300)
