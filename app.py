@@ -12,9 +12,10 @@ COSTO_MINUTO = 0.15
 HORA_ENTRADA_OFICIAL = "08:00:00" 
 TOLERANCIA_MENSUAL = 30 
 
-# --- ESTILOS CSS: FUSIÓN DE LOGOS Y DISEÑO LIMPIO ---
+# --- ESTILOS CSS: LIMPIEZA TOTAL DE FONDOS BLANCOS ---
 st.markdown("""
     <style>
+    /* Fondo de oficina con filtro de claridad */
     .stApp {
         background-image: linear-gradient(rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.8)), 
         url("https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=1350&q=80");
@@ -30,15 +31,16 @@ st.markdown("""
         position: relative;
     }
 
-    /* LIMPIEZA DE LOGOS: Elimina el fondo blanco y permite ver la oficina */
+    /* TÉCNICA DE LIMPIEZA: Elimina el blanco de logo_lobo.png y Lobo.png */
     [data-testid="stSidebar"] img, 
     .stImage > img {
         background-color: transparent !important;
-        mix-blend-mode: multiply; /* Esta es la clave para la transparencia */
+        mix-blend-mode: multiply; /* Filtra el blanco y lo hace transparente */
+        filter: contrast(105%) brightness(105%); /* Resalta los azules del logo */
         border: none !important;
     }
 
-    /* Gota de agua sutil en el reporte */
+    /* Marca de agua sutil en el reporte */
     .main .block-container::before {
         content: "";
         position: absolute;
@@ -54,7 +56,7 @@ st.markdown("""
         z-index: 0;
     }
 
-    /* Alineación Sidebar */
+    /* Alineación Sidebar Homogénea */
     .sidebar-brand-horizontal {
         display: flex;
         align-items: center;
@@ -95,7 +97,7 @@ if "reset_key" not in st.session_state: st.session_state.reset_key = 0
 # --- 3. INTERFAZ LATERAL ---
 modo = "Marcación"
 with st.sidebar:
-    # --- LOBO RESTAURADO Y MÁS GRANDE (55px) ---
+    # --- LOBO GRANDE (55px) Y LIMPIO ---
     st.markdown("<div class='sidebar-brand-horizontal'>", unsafe_allow_html=True)
     c_side_logo, c_side_text = st.columns([0.35, 0.65])
     with c_side_logo:
@@ -110,7 +112,7 @@ with st.sidebar:
         clave = st.text_input("Contraseña:", type="password")
         if clave == "Lobo2026": modo = "Admin"
 
-# --- 4. CABECERA PRINCIPAL (CON LOGO CENTRAL LIMPIO) ---
+# --- 4. CABECERA PRINCIPAL (LOGO CENTRAL LIMPIO) ---
 c_izq, c_logo_p, c_tit, c_der = st.columns([0.5, 3.5, 6, 0.5])
 with c_logo_p:
     if os.path.exists("logo_lobo.png"):
@@ -143,38 +145,22 @@ if modo == "Marcación":
             st.info(f"👤 TRABAJADOR: {nombre}")
             c1, c2 = st.columns(2)
             with c1:
-                if st.button("📥 INGRESO", use_container_width=True): st.success("REGISTRADO")
+                if st.button("📥 INGRESO", use_container_width=True): st.success("INGRESO REGISTRADO")
             with c2:
-                if st.button("📤 SALIDA", use_container_width=True): st.success("SALIDA")
+                if st.button("📤 SALIDA", use_container_width=True): st.success("SALIDA REGISTRADA")
         else: st.error("DNI no registrado.")
 
-else: # --- PANEL ADMIN CON FILTROS ---
+else: # --- PANEL ADMIN ---
     st.header("📋 Reporte Auditado de Asistencia")
     df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
     
     if not df_h.empty:
         df_h['Fecha_dt'] = pd.to_datetime(df_h['Fecha'], errors='coerce')
-        meses_dict = {1:"Ene", 2:"Feb", 3:"Mar", 4:"Abr", 5:"May", 6:"Jun", 7:"Jul", 8:"Ago", 9:"Sep", 10:"Oct", 11:"Nov", 12:"Dic"}
-        
-        f1, f2, f3 = st.columns(3)
-        with f1: sel_anio = st.selectbox("Año", sorted(df_h['Fecha_dt'].dt.year.unique(), reverse=True))
-        with f2:
-            m_num = sorted(df_h[df_h['Fecha_dt'].dt.year == sel_anio]['Fecha_dt'].dt.month.unique())
-            sel_mes = st.selectbox("Mes", m_num, format_func=lambda x: meses_dict[x])
-        with f3:
-            nombres = sorted(df_h[(df_h['Fecha_dt'].dt.year == sel_anio) & (df_h['Fecha_dt'].dt.month == sel_mes)]['Nombre'].unique())
-            sel_nombre = st.selectbox("Trabajador", ["TODOS"] + nombres)
-        
-        df_filtrado = df_h[(df_h['Fecha_dt'].dt.year == sel_anio) & (df_h['Fecha_dt'].dt.month == sel_mes)].copy()
-        
-        resumen = df_filtrado.groupby('Nombre')['Tardanza_Min'].sum().reset_index()
+        resumen = df_h.groupby('Nombre')['Tardanza_Min'].sum().reset_index()
         resumen['Excedente'] = resumen['Tardanza_Min'].apply(lambda x: (x - TOLERANCIA_MENSUAL) if x > TOLERANCIA_MENSUAL else 0)
         resumen['Descuento'] = resumen['Excedente'] * COSTO_MINUTO
 
-        if sel_nombre != "TODOS":
-            df_filtrado = df_filtrado[df_filtrado['Nombre'] == sel_nombre]
-            resumen = resumen[resumen['Nombre'] == sel_nombre]
-
-        st.dataframe(df_filtrado.drop(columns=['Fecha_dt']), use_container_width=True)
+        st.dataframe(df_h.drop(columns=['Fecha_dt']), use_container_width=True)
+        st.subheader("💰 Resumen de Auditoría")
         st.table(resumen)
         st.metric("Total General a Descontar", f"S/ {resumen['Descuento'].sum():.2f}")
