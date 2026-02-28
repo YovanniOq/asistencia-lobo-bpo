@@ -12,7 +12,7 @@ COSTO_MINUTO = 0.15
 HORA_ENTRADA_OFICIAL = "08:00:00" 
 TOLERANCIA_MENSUAL = 30 
 
-# --- ESTILOS CSS: FONDO, MARCA DE AGUA Y ALINEACIÓN ---
+# --- ESTILOS CSS ---
 st.markdown("""
     <style>
     .stApp {
@@ -28,14 +28,11 @@ st.markdown("""
         box-shadow: 0 10px 30px rgba(0,0,0,0.15);
         position: relative;
     }
-    /* Marca de agua sutil */
     .main .block-container::before {
         content: "";
         position: absolute;
-        top: 50%;
-        left: 50%;
-        width: 500px;
-        height: 500px;
+        top: 50%; left: 50%;
+        width: 500px; height: 500px;
         background-image: url("https://raw.githubusercontent.com/Yovanni/asistencia/main/Lobo.png");
         background-repeat: no-repeat;
         background-position: center;
@@ -51,8 +48,7 @@ st.markdown("""
 def obtener_hora_peru():
     return datetime.now(timezone.utc) - timedelta(hours=5)
 
-# --- JAVASCRIPT DE FOCO INTELIGENTE (CORREGIDO) ---
-# Ahora detecta si el usuario está en el campo de contraseña para no interrumpir
+# --- JAVASCRIPT DE FOCO INTELIGENTE ---
 components.html("""
     <script>
     const forceFocus = () => {
@@ -62,10 +58,7 @@ components.html("""
             const dniInput = inputs[0];
             const activeElem = window.parent.document.activeElement;
             let escribiendoPass = false;
-            
-            // Si el usuario tiene el cursor en algún campo de contraseña, no forzamos el DNI
             passInputs.forEach(p => { if(activeElem === p) escribiendoPass = true; });
-            
             if (activeElem !== dniInput && !escribiendoPass) {
                 dniInput.focus();
             }
@@ -83,11 +76,9 @@ if "reset_key" not in st.session_state: st.session_state.reset_key = 0
 # --- 3. INTERFAZ LATERAL ---
 modo = "Marcación"
 with st.sidebar:
-    # --- LOBO PEQUEÑO Y HOMOGÉNEO ---
     c_logo, c_text = st.columns([0.2, 0.8])
     with c_logo:
-        if os.path.exists("Lobo.png"):
-            st.image("Lobo.png", width=32)
+        if os.path.exists("Lobo.png"): st.image("Lobo.png", width=32)
     with c_text:
         st.markdown("<h2 style='color: #1E3A8A; font-size: 20px; margin: 0; padding-top: 5px;'>Gestión Lobo</h2>", unsafe_allow_html=True)
     
@@ -126,25 +117,46 @@ if modo == "Marcación":
             st.info(f"👤 TRABAJADOR: {nombre}")
             c_btns = st.columns(2)
             with c_btns[0]:
-                if st.button("📥 INGRESO", use_container_width=True):
-                    # Aquí llamarías a registrar_en_nube
-                    st.success(f"REGISTRADO: {nombre}")
+                if st.button("📥 INGRESO", use_container_width=True): st.success(f"INGRESO: {nombre}")
             with c_btns[1]:
-                if st.button("📤 SALIDA", use_container_width=True):
-                    st.success(f"SALIDA: {nombre}")
+                if st.button("📤 SALIDA", use_container_width=True): st.success(f"SALIDA: {nombre}")
         else: st.error("DNI no registrado.")
 
-else: # --- PANEL ADMIN ---
+else: # --- PANEL ADMIN CON FILTROS RESTAURADOS ---
     st.header("📋 Reporte Auditado de Asistencia")
     df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
     
     if not df_h.empty:
         df_h['Fecha_dt'] = pd.to_datetime(df_h['Fecha'], errors='coerce')
-        resumen = df_h.groupby('Nombre')['Tardanza_Min'].sum().reset_index()
+        meses_dict = {1:"Ene", 2:"Feb", 3:"Mar", 4:"Abr", 5:"May", 6:"Jun", 7:"Jul", 8:"Ago", 9:"Sep", 10:"Oct", 11:"Nov", 12:"Dic"}
+        
+        # --- FILTROS ---
+        f1, f2, f3 = st.columns(3)
+        with f1:
+            anios = sorted(df_h['Fecha_dt'].dt.year.unique(), reverse=True)
+            sel_anio = st.selectbox("Año", anios)
+        with f2:
+            meses_num = sorted(df_h[df_h['Fecha_dt'].dt.year == sel_anio]['Fecha_dt'].dt.month.unique())
+            sel_mes = st.selectbox("Mes", meses_num, format_func=lambda x: meses_dict[x])
+        with f3:
+            nombres = sorted(df_h[(df_h['Fecha_dt'].dt.year == sel_anio) & (df_h['Fecha_dt'].dt.month == sel_mes)]['Nombre'].unique())
+            sel_nombre = st.selectbox("Trabajador", ["TODOS"] + nombres)
+        
+        # Aplicar Filtros
+        df_filtrado = df_h[(df_h['Fecha_dt'].dt.year == sel_anio) & (df_h['Fecha_dt'].dt.month == sel_mes)].copy()
+        
+        # Cálculo de Resumen
+        resumen = df_filtrado.groupby('Nombre')['Tardanza_Min'].sum().reset_index()
         resumen['Excedente'] = resumen['Tardanza_Min'].apply(lambda x: (x - TOLERANCIA_MENSUAL) if x > TOLERANCIA_MENSUAL else 0)
         resumen['Descuento'] = resumen['Excedente'] * COSTO_MINUTO
 
-        st.dataframe(df_h.drop(columns=['Fecha_dt']), use_container_width=True)
+        if sel_nombre != "TODOS":
+            df_filtrado = df_filtrado[df_filtrado['Nombre'] == sel_nombre]
+            resumen = resumen[resumen['Nombre'] == sel_nombre]
+
+        st.subheader("Historial de Marcaciones")
+        st.dataframe(df_filtrado.drop(columns=['Fecha_dt']), use_container_width=True)
+        
         st.subheader("💰 Resumen de Auditoría")
         st.table(resumen)
-        st.metric("Total General a Descontar", f"S/ {resumen['Descuento'].sum():.2f}")
+        st.metric("Total a Descontar", f"S/ {resumen['Descuento'].sum():.2f}")
