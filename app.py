@@ -12,44 +12,62 @@ COSTO_MINUTO = 0.15
 HORA_ENTRADA_OFICIAL = "08:00:00" 
 TOLERANCIA_MENSUAL = 30 
 
-# --- ESTILOS CSS: FONDO, MARCA DE AGUA Y ALINEACIÓN ---
+# --- ESTILOS CSS: FUSIÓN TOTAL CON EL FONDO ---
 st.markdown("""
     <style>
+    /* Fondo de oficina con filtro de claridad */
     .stApp {
-        background-image: linear-gradient(rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.85)), 
+        background-image: linear-gradient(rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.8)), 
         url("https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=1350&q=80");
         background-size: cover;
         background-attachment: fixed;
     }
+    
+    /* Contenedor principal semi-transparente */
     .main .block-container {
-        background-color: rgba(255, 255, 255, 0.95);
+        background-color: rgba(255, 255, 255, 0.92);
         padding: 3rem;
-        border-radius: 15px;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+        border-radius: 20px;
+        box-shadow: 0 15px 35px rgba(0,0,0,0.1);
         position: relative;
     }
-    /* Marca de agua sutil en el centro */
+
+    /* Gota de agua sutil del Lobo en el centro */
     .main .block-container::before {
         content: "";
         position: absolute;
         top: 50%; left: 50%;
         width: 500px; height: 500px;
-        /* Usamos la URL directa para la marca de agua */
         background-image: url("https://raw.githubusercontent.com/Yovanni/asistencia/main/Lobo.png");
         background-repeat: no-repeat;
         background-position: center;
         background-size: contain;
-        opacity: 0.04; 
+        opacity: 0.05; 
         transform: translate(-50%, -50%);
         pointer-events: none;
         z-index: 0;
     }
-    /* Estilo para quitar cualquier fondo blanco de las imágenes */
-    img {
+
+    /* ELIMINACIÓN DE FONDOS BLANCOS EN LOGOS */
+    [data-testid="stSidebar"] img, 
+    .stImage > img {
         background-color: transparent !important;
+        mix-blend-mode: multiply; /* Esto ayuda a fusionar si queda algún residuo blanco */
+    }
+
+    /* Alineación de Sidebar */
+    .sidebar-brand-horizontal {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 25px;
     }
     </style>
     """, unsafe_allow_html=True)
+
+def obtener_hora_peru():
+    return datetime.now(timezone.utc) - timedelta(hours=5)
 
 # --- JAVASCRIPT DE FOCO INTELIGENTE ---
 components.html("""
@@ -79,20 +97,20 @@ if "reset_key" not in st.session_state: st.session_state.reset_key = 0
 # --- 3. INTERFAZ LATERAL ---
 modo = "Marcación"
 with st.sidebar:
-    # --- CABECERA: LOBO PEQUEÑO Y HOMOGÉNEO ---
-    c_logo_side, c_text_side = st.columns([0.2, 0.8])
-    with c_logo_side:
-        if os.path.exists("Lobo.png"):
-            st.image("Lobo.png", width=30) # Tamaño pequeño y homogéneo
-    with c_text_side:
-        st.markdown("<h2 style='color: #1E3A8A; font-size: 20px; margin: 0; padding-top: 2px;'>Gestión Lobo</h2>", unsafe_allow_html=True)
+    # --- CABECERA LIMPIA ---
+    st.markdown(f"""
+        <div class="sidebar-brand-horizontal">
+            <img src="https://raw.githubusercontent.com/Yovanni/asistencia/main/Lobo.png" style="width: 35px;">
+            <h2 style='color: #1E3A8A; font-size: 22px; margin: 0;'>Gestión Lobo</h2>
+        </div>
+    """, unsafe_allow_html=True)
     
     st.divider()
     if st.checkbox("Acceso Administrador"):
         clave = st.text_input("Contraseña:", type="password")
         if clave == "Lobo2026": modo = "Admin"
 
-# --- 4. CABECERA PRINCIPAL (BAJADA Y NIVELADA) ---
+# --- 4. CABECERA PRINCIPAL ---
 c_izq, c_logo_p, c_tit, c_der = st.columns([0.5, 3.5, 6, 0.5])
 with c_logo_p:
     if os.path.exists("logo_lobo.png"):
@@ -101,9 +119,9 @@ with c_logo_p:
         st.markdown("</div>", unsafe_allow_html=True)
 with c_tit:
     st.markdown(f"""
-        <div style='padding-top: 45px;'>
+        <div style='padding-top: 15px;'>
             <h1 style='color: #1E3A8A; font-size: 50px; margin-bottom: 0px;'>Marcación Sr. Lobo</h1>
-            <h3 style='color: #444; font-size: 26px; margin-top: -10px;'>Sr. Lobo BPO Solutions</h3>
+            <h2 style='color: #444; font-size: 26px; margin-top: -10px;'>Sr. Lobo BPO Solutions</h2>
         </div>
     """, unsafe_allow_html=True)
 
@@ -131,7 +149,7 @@ if modo == "Marcación":
                 if st.button("📤 SALIDA", use_container_width=True): st.success("SALIDA")
         else: st.error("DNI no registrado.")
 
-else: # --- PANEL ADMIN CON FILTROS ---
+else: # --- PANEL ADMIN ---
     st.header("📋 Reporte Auditado de Asistencia")
     df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
     
