@@ -12,7 +12,7 @@ COSTO_MINUTO = 0.15
 HORA_ENTRADA_OFICIAL = "08:00:00" 
 TOLERANCIA_MENSUAL = 30 
 
-# --- ESTILOS CSS: FONDO DE OFICINA ---
+# --- ESTILOS CSS: FONDO DE OFICINA + DISEÑO DE BARRA LATERAL ---
 st.markdown("""
     <style>
     .stApp {
@@ -89,26 +89,23 @@ def registrar_en_nube(dni, nombre, tipo):
 # --- 4. INTERFAZ ---
 modo = "Marcación"
 with st.sidebar:
-    # --- RECORTE VISUAL DEL LOBO (SIN TOCAR EL ARCHIVO ORIGINAL) ---
-    if os.path.exists("logo_lobo.png"):
-        st.markdown(f"""
-            <div style='display: flex; align-items: center; gap: 15px; margin-bottom: 25px;'>
-                <div style='width: 55px; height: 55px; overflow: hidden; display: flex; align-items: center; justify-content: center; border-radius: 8px;'>
-                    <img src='https://raw.githubusercontent.com/Yovanni/asistencia/main/logo_lobo.png' 
-                         style='width: 250px; margin-left: 185px; margin-top: -5px;'>
-                </div>
-                <h1 style='color: #1E3A8A; font-size: 26px; margin: 0; white-space: nowrap;'>Gestión Lobo</h1>
+    # --- LOGO (SOLO ANIMAL) Y TÍTULO ALINEADOS ---
+    st.markdown(f"""
+        <div style='display: flex; align-items: center; gap: 10px; margin-bottom: 25px;'>
+            <div style='width: 45px; height: 45px; overflow: hidden; display: flex; align-items: center; justify-content: center; border-radius: 5px;'>
+                <img src='https://raw.githubusercontent.com/Yovanni/asistencia/main/logo_lobo.png' 
+                     style='width: 210px; margin-left: 155px; margin-top: -5px;'>
             </div>
-        """, unsafe_allow_html=True)
-    else:
-        st.title("Gestión Lobo")
+            <h1 style='color: #1E3A8A; font-size: 24px; margin: 0; white-space: nowrap;'>Gestión Lobo</h1>
+        </div>
+    """, unsafe_allow_html=True)
     
     st.divider()
     if st.checkbox("Acceso Administrador"):
         clave = st.text_input("Contraseña:", type="password")
         if clave == "Lobo2026": modo = "Admin"
 
-# Cabecera principal (RESTAURADA)
+# Cabecera principal (Restaurada)
 c_izq, c_logo, c_tit, c_der = st.columns([1, 3, 6, 1])
 with c_logo:
     if os.path.exists("logo_lobo.png"):
@@ -128,7 +125,7 @@ if modo == "Marcación":
     st.write("### DIGITE SU DNI:")
     c_dni, _ = st.columns([1, 4])
     with c_dni:
-        # RESPETADO EL LÍMITE DE 12 CARACTERES
+        # SE MANTIENE EL LÍMITE DE 12 CARACTERES
         dni_in = st.text_input("DNI", key=f"dni_{st.session_state.reset_key}", label_visibility="collapsed", max_chars=12)
 
     if dni_in:
@@ -138,7 +135,7 @@ if modo == "Marcación":
         
         if not emp.empty:
             nombre = emp.iloc[0]['Nombre']
-            st.info(f"👤 TRABAJADOR: {nombre}")
+            st.info(f"👤 TRABAJADOR DETECTADO: {nombre}")
             c_btns = st.columns(2)
             with c_btns[0]:
                 if st.button("📥 INGRESO", use_container_width=True): registrar_en_nube(dni_in, nombre, "INGRESO")
@@ -146,7 +143,7 @@ if modo == "Marcación":
                 if st.button("📤 SALIDA", use_container_width=True): registrar_en_nube(dni_in, nombre, "SALIDA")
         else: st.error("DNI no registrado.")
 
-else: # --- ADMIN COMPLETO ---
+else: # --- ADMIN COMPLETO: REPORTES Y TOTALES ---
     st.header("📋 Reporte Auditado de Asistencia")
     df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
     
@@ -165,7 +162,7 @@ else: # --- ADMIN COMPLETO ---
         
         df_mes = df_h[(df_h['Fecha_dt'].dt.year == sel_anio) & (df_h['Fecha_dt'].dt.month == sel_mes)].copy()
 
-        # Resumen y Totales
+        # Totales y Auditoría
         resumen = df_mes.groupby('Nombre')['Tardanza_Min'].sum().reset_index()
         resumen['Excedente'] = resumen['Tardanza_Min'].apply(lambda x: (x - TOLERANCIA_MENSUAL) if x > TOLERANCIA_MENSUAL else 0)
         resumen['Descuento'] = resumen['Excedente'] * COSTO_MINUTO
