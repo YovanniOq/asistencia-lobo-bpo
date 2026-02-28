@@ -12,7 +12,7 @@ COSTO_MINUTO = 0.15
 HORA_ENTRADA_OFICIAL = "08:00:00" 
 TOLERANCIA_MENSUAL = 30 
 
-# --- ESTILOS CSS: FONDO, MARCA DE AGUA Y ALINEACIÓN HOMOGÉNEA ---
+# --- ESTILOS CSS: FONDO, MARCA DE AGUA Y ALINEACIÓN LATERAL ---
 st.markdown("""
     <style>
     /* Fondo de oficina general */
@@ -33,42 +33,40 @@ st.markdown("""
         overflow: hidden;
     }
 
-    /* Gota de agua del Lobo centrada en el fondo */
+    /* Gota de agua del Lobo centrada en el fondo del reporte */
     .main .block-container::before {
         content: "";
         position: absolute;
         top: 50%;
         left: 50%;
-        width: 600px;
-        height: 600px;
+        width: 500px;
+        height: 500px;
         background-image: url("https://raw.githubusercontent.com/Yovanni/asistencia/main/Lobo.png");
         background-repeat: no-repeat;
         background-position: center;
         background-size: contain;
-        opacity: 0.06; /* Muy sutil para que sea marca de agua */
+        opacity: 0.04; /* Más sutil para no interferir con la lectura */
         transform: translate(-50%, -50%);
         pointer-events: none;
         z-index: 0;
     }
 
-    /* Alineación vertical HOMOGÉNEA para el lobo y el título */
-    .sidebar-brand {
+    /* ALINEACIÓN HOMOGÉNEA: LOBO AL COSTADO IZQUIERDO DEL TÍTULO */
+    .sidebar-brand-container {
         display: flex;
-        align-items: center;
-        gap: 10px;
-        margin-bottom: 20px;
-        justify-content: flex-start; /* Alinea al inicio */
+        align-items: center; /* Alineación vertical perfecta */
+        gap: 12px;
+        margin-bottom: 25px;
+        padding-left: 5px;
     }
-    .sidebar-brand img {
-        vertical-align: middle; /* Alineación vertical de la imagen */
-    }
-    .sidebar-brand h2 {
-        color: #1E3A8A;
-        font-size: 20px; /* Tamaño de fuente ajustado para homogeneidad */
+    .sidebar-brand-container img {
         margin: 0;
-        padding: 0;
-        display: flex;
-        align-items: center; /* Centrado vertical del texto */
+    }
+    .sidebar-brand-container h2 {
+        color: #1E3A8A;
+        font-size: 22px; /* Tamaño equilibrado con el logo */
+        margin: 0;
+        line-height: 1;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -131,12 +129,12 @@ def registrar_en_nube(dni, nombre, tipo):
 # --- 4. INTERFAZ ---
 modo = "Marcación"
 with st.sidebar:
-    # --- CABECERA: LOBO ANIMAL + GESTIÓN LOBO CON ALINEACIÓN HOMOGÉNEA ---
-    st.markdown("""<div class='sidebar-brand'>""", unsafe_allow_html=True)
+    # --- CABECERA CORREGIDA: LOBO AL COSTADO DEL TÍTULO ---
+    st.markdown("<div class='sidebar-brand-container'>", unsafe_allow_html=True)
     if os.path.exists("Lobo.png"):
-        st.image("Lobo.png", width=35) # Tamaño de imagen ajustado ligeramente
+        st.image("Lobo.png", width=38) # Tamaño ajustado para homogeneidad
     st.markdown("<h2>Gestión Lobo</h2>", unsafe_allow_html=True)
-    st.markdown("""</div>""", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
     
     st.divider()
     if st.checkbox("Acceso Administrador"):
@@ -161,6 +159,7 @@ if modo == "Marcación":
     st.write("### DIGITE SU DNI:")
     c_dni, _ = st.columns([1, 4])
     with c_dni:
+        # SE MANTIENE EL LÍMITE DE 12 CARACTERES
         dni_in = st.text_input("DNI", key=f"dni_{st.session_state.reset_key}", label_visibility="collapsed", max_chars=12)
 
     if dni_in:
@@ -178,7 +177,7 @@ if modo == "Marcación":
                 if st.button("📤 SALIDA", use_container_width=True): registrar_en_nube(dni_in, nombre, "SALIDA")
         else: st.error("DNI no registrado.")
 
-else: # --- PANEL ADMIN CON MARCA DE AGUA Y AUDITORÍA ---
+else: # --- PANEL ADMIN CON MARCA DE AGUA ---
     st.header("📋 Reporte Auditado de Asistencia")
     df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
     
