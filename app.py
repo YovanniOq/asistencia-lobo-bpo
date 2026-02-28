@@ -21,7 +21,6 @@ st.markdown("""
         background-size: cover;
         background-attachment: fixed;
     }
-    
     .main .block-container {
         background-color: rgba(255, 255, 255, 0.95);
         padding: 3rem;
@@ -29,8 +28,7 @@ st.markdown("""
         box-shadow: 0 10px 30px rgba(0,0,0,0.15);
         position: relative;
     }
-
-    /* Gota de agua sutil en el reporte */
+    /* Marca de agua sutil */
     .main .block-container::before {
         content: "";
         position: absolute;
@@ -47,32 +45,28 @@ st.markdown("""
         pointer-events: none;
         z-index: 0;
     }
-
-    /* Contenedor para alinear Lobo y Texto en la misma línea */
-    [data-testid="stSidebarNav"] { display: none; } /* Oculta nav extra si existe */
-    
-    .sidebar-brand-container {
-        display: flex;
-        flex-direction: row;
-        align-items: center;
-        gap: 10px;
-        margin-bottom: 20px;
-        padding-top: 10px;
-    }
     </style>
     """, unsafe_allow_html=True)
 
 def obtener_hora_peru():
     return datetime.now(timezone.utc) - timedelta(hours=5)
 
-# --- JAVASCRIPT DE FOCO INTELIGENTE ---
+# --- JAVASCRIPT DE FOCO INTELIGENTE (CORREGIDO) ---
+# Ahora detecta si el usuario está en el campo de contraseña para no interrumpir
 components.html("""
     <script>
     const forceFocus = () => {
         const inputs = window.parent.document.querySelectorAll('input[type="text"]');
+        const passInputs = window.parent.document.querySelectorAll('input[type="password"]');
         if (inputs.length > 0) {
             const dniInput = inputs[0];
-            if (window.parent.document.activeElement !== dniInput) {
+            const activeElem = window.parent.document.activeElement;
+            let escribiendoPass = false;
+            
+            // Si el usuario tiene el cursor en algún campo de contraseña, no forzamos el DNI
+            passInputs.forEach(p => { if(activeElem === p) escribiendoPass = true; });
+            
+            if (activeElem !== dniInput && !escribiendoPass) {
                 dniInput.focus();
             }
         }
@@ -84,20 +78,18 @@ components.html("""
 # --- 2. CONEXIÓN ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 url_hoja = st.secrets["connections"]["gsheets"]["spreadsheet"]
-
 if "reset_key" not in st.session_state: st.session_state.reset_key = 0
 
 # --- 3. INTERFAZ LATERAL ---
 modo = "Marcación"
 with st.sidebar:
-    # --- CABECERA: LOBO PEQUEÑO AL COSTADO IZQUIERDO ---
-    # Usamos columnas de Streamlit con un ratio pequeño para asegurar la posición
-    c_logo, c_text = st.columns([0.25, 0.75])
+    # --- LOBO PEQUEÑO Y HOMOGÉNEO ---
+    c_logo, c_text = st.columns([0.2, 0.8])
     with c_logo:
         if os.path.exists("Lobo.png"):
-            st.image("Lobo.png", width=32) # Más pequeño y homogéneo
+            st.image("Lobo.png", width=32)
     with c_text:
-        st.markdown("<h2 style='color: #1E3A8A; font-size: 20px; margin: 0; padding-top: 4px;'>Gestión Lobo</h2>", unsafe_allow_html=True)
+        st.markdown("<h2 style='color: #1E3A8A; font-size: 20px; margin: 0; padding-top: 5px;'>Gestión Lobo</h2>", unsafe_allow_html=True)
     
     st.divider()
     if st.checkbox("Acceso Administrador"):
@@ -122,10 +114,10 @@ if modo == "Marcación":
     st.write("### DIGITE SU DNI:")
     c_dni, _ = st.columns([1, 4])
     with c_dni:
-        # SE MANTIENE EL DNI DE 12 CARACTERES
         dni_in = st.text_input("DNI", key=f"dni_{st.session_state.reset_key}", label_visibility="collapsed", max_chars=12)
 
     if dni_in:
+        st.cache_data.clear()
         df_emp = pd.read_csv("empleados.csv", dtype={'DNI': str})
         emp = df_emp[df_emp['DNI'] == str(dni_in).strip()]
         
@@ -135,14 +127,14 @@ if modo == "Marcación":
             c_btns = st.columns(2)
             with c_btns[0]:
                 if st.button("📥 INGRESO", use_container_width=True):
-                    # Aquí iría tu función de registrar_en_nube
-                    st.success("INGRESO REGISTRADO")
+                    # Aquí llamarías a registrar_en_nube
+                    st.success(f"REGISTRADO: {nombre}")
             with c_btns[1]:
                 if st.button("📤 SALIDA", use_container_width=True):
-                    st.success("SALIDA REGISTRADA")
+                    st.success(f"SALIDA: {nombre}")
         else: st.error("DNI no registrado.")
 
-else: # --- ADMIN CON MARCA DE AGUA ---
+else: # --- PANEL ADMIN ---
     st.header("📋 Reporte Auditado de Asistencia")
     df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
     
