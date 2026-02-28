@@ -12,10 +12,10 @@ COSTO_MINUTO = 0.15
 HORA_ENTRADA_OFICIAL = "08:00:00" 
 TOLERANCIA_MENSUAL = 30 
 
-# --- ESTILOS CSS: FUSIÓN TOTAL CON EL FONDO ---
+# --- ESTILOS CSS: TRANSPARENCIA TOTAL Y FUSIÓN ---
 st.markdown("""
     <style>
-    /* Fondo de oficina con filtro de claridad */
+    /* Fondo de oficina con filtro suave */
     .stApp {
         background-image: linear-gradient(rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.8)), 
         url("https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=1350&q=80");
@@ -23,7 +23,7 @@ st.markdown("""
         background-attachment: fixed;
     }
     
-    /* Contenedor principal semi-transparente */
+    /* Contenedor principal sin cajas blancas molestas */
     .main .block-container {
         background-color: rgba(255, 255, 255, 0.92);
         padding: 3rem;
@@ -32,7 +32,15 @@ st.markdown("""
         position: relative;
     }
 
-    /* Gota de agua sutil del Lobo en el centro */
+    /* ELIMINACIÓN DE FONDO BLANCO: La clave está aquí */
+    [data-testid="stSidebar"] img, 
+    .stImage > img {
+        background-color: transparent !important;
+        mix-blend-mode: multiply; /* Elimina el blanco y deja pasar el fondo */
+        border: none !important;
+    }
+
+    /* Gota de agua sutil en el reporte */
     .main .block-container::before {
         content: "";
         position: absolute;
@@ -48,19 +56,11 @@ st.markdown("""
         z-index: 0;
     }
 
-    /* ELIMINACIÓN DE FONDOS BLANCOS EN LOGOS */
-    [data-testid="stSidebar"] img, 
-    .stImage > img {
-        background-color: transparent !important;
-        mix-blend-mode: multiply; /* Esto ayuda a fusionar si queda algún residuo blanco */
-    }
-
-    /* Alineación de Sidebar */
+    /* Alineación Sidebar Homogénea */
     .sidebar-brand-horizontal {
         display: flex;
-        flex-direction: row;
         align-items: center;
-        gap: 12px;
+        gap: 10px;
         margin-bottom: 25px;
     }
     </style>
@@ -69,7 +69,7 @@ st.markdown("""
 def obtener_hora_peru():
     return datetime.now(timezone.utc) - timedelta(hours=5)
 
-# --- JAVASCRIPT DE FOCO INTELIGENTE ---
+# --- JAVASCRIPT DE FOCO INTELIGENTE (NO ROBA EL CURSOR) ---
 components.html("""
     <script>
     const forceFocus = () => {
@@ -97,20 +97,22 @@ if "reset_key" not in st.session_state: st.session_state.reset_key = 0
 # --- 3. INTERFAZ LATERAL ---
 modo = "Marcación"
 with st.sidebar:
-    # --- CABECERA LIMPIA ---
-    st.markdown(f"""
-        <div class="sidebar-brand-horizontal">
-            <img src="https://raw.githubusercontent.com/Yovanni/asistencia/main/Lobo.png" style="width: 35px;">
-            <h2 style='color: #1E3A8A; font-size: 22px; margin: 0;'>Gestión Lobo</h2>
-        </div>
-    """, unsafe_allow_html=True)
+    # --- LOGO PEQUEÑO AL COSTADO (TRANSPARENTE) ---
+    st.markdown("<div class='sidebar-brand-horizontal'>", unsafe_allow_html=True)
+    c_side_logo, c_side_text = st.columns([0.25, 0.75])
+    with c_side_logo:
+        if os.path.exists("Lobo.png"):
+            st.image("Lobo.png", width=32)
+    with c_side_text:
+        st.markdown("<h2 style='color: #1E3A8A; font-size: 20px; margin: 0; padding-top: 5px;'>Gestión Lobo</h2>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
     
     st.divider()
     if st.checkbox("Acceso Administrador"):
         clave = st.text_input("Contraseña:", type="password")
         if clave == "Lobo2026": modo = "Admin"
 
-# --- 4. CABECERA PRINCIPAL ---
+# --- 4. CABECERA PRINCIPAL (BAJADA Y TRANSPARENTE) ---
 c_izq, c_logo_p, c_tit, c_der = st.columns([0.5, 3.5, 6, 0.5])
 with c_logo_p:
     if os.path.exists("logo_lobo.png"):
@@ -131,10 +133,10 @@ if modo == "Marcación":
     st.write("### DIGITE SU DNI:")
     c_dni, _ = st.columns([1, 4])
     with c_dni:
+        # SE MANTIENE EL DNI DE 12 CARACTERES
         dni_in = st.text_input("DNI", key=f"dni_{st.session_state.reset_key}", label_visibility="collapsed", max_chars=12)
 
     if dni_in:
-        # Lógica de marcación
         st.cache_data.clear()
         df_emp = pd.read_csv("empleados.csv", dtype={'DNI': str})
         emp = df_emp[df_emp['DNI'] == str(dni_in).strip()]
@@ -144,12 +146,12 @@ if modo == "Marcación":
             st.info(f"👤 TRABAJADOR: {nombre}")
             c1, c2 = st.columns(2)
             with c1:
-                if st.button("📥 INGRESO", use_container_width=True): st.success("INGRESO")
+                if st.button("📥 INGRESO", use_container_width=True): st.success("INGRESO REGISTRADO")
             with c2:
-                if st.button("📤 SALIDA", use_container_width=True): st.success("SALIDA")
+                if st.button("📤 SALIDA", use_container_width=True): st.success("SALIDA REGISTRADA")
         else: st.error("DNI no registrado.")
 
-else: # --- PANEL ADMIN ---
+else: # --- PANEL ADMIN CON FILTROS ---
     st.header("📋 Reporte Auditado de Asistencia")
     df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
     
@@ -177,5 +179,6 @@ else: # --- PANEL ADMIN ---
             resumen = resumen[resumen['Nombre'] == sel_nombre]
 
         st.dataframe(df_filtrado.drop(columns=['Fecha_dt']), use_container_width=True)
+        st.subheader("💰 Resumen de Auditoría")
         st.table(resumen)
         st.metric("Total General a Descontar", f"S/ {resumen['Descuento'].sum():.2f}")
