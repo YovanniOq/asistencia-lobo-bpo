@@ -16,7 +16,7 @@ TOLERANCIA_MENSUAL = 30
 st.markdown("""
     <style>
     .stApp {
-        background-image: linear-gradient(rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.85)), 
+        background-image: linear-gradient(rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.8)), 
         url("https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=1350&q=80");
         background-size: cover;
         background-attachment: fixed;
@@ -103,7 +103,7 @@ def registrar_en_nube(dni, nombre, tipo):
         df_final = pd.concat([df_h, nueva_fila], ignore_index=True)
         conn.update(spreadsheet=url_hoja, worksheet="Sheet1", data=df_final)
         
-        st.success(f"✅ {tipo} REGISTRADO CORRECTAMENTE")
+        st.success(f"✅ {tipo} REGISTRADO")
         time.sleep(1.2); st.session_state.reset_key += 1; st.rerun()
     except Exception as e: st.error(f"Error: {e}")
 
@@ -128,7 +128,7 @@ with st.sidebar:
         clave = st.text_input("Contraseña:", type="password")
         if clave == "Lobo2026": modo = "Admin"
 
-# Cabecera principal
+# Cabecera principal centrada
 c_izq, c_logo, c_tit, c_der = st.columns([1, 3, 6, 1])
 with c_logo:
     if os.path.exists("logo_lobo.png"):
@@ -166,13 +166,12 @@ if modo == "Marcación":
                 if st.button("📤 SALIDA", use_container_width=True): registrar_en_nube(dni_in, nombre, "SALIDA")
         else: st.error("DNI no registrado.")
 
-else: # --- PANEL ADMIN: REPORTES, FILTROS Y TOTALES ---
+else: # --- PANEL ADMIN: REPORTES Y TOTALES ---
     st.header("📋 Reporte Auditado de Asistencia")
     df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
     
     if not df_h.empty:
         df_h['Fecha_dt'] = pd.to_datetime(df_h['Fecha'], errors='coerce')
-        # Auditoría completa restaurada
         resumen = df_h.groupby('Nombre')['Tardanza_Min'].sum().reset_index()
         resumen['Excedente'] = resumen['Tardanza_Min'].apply(lambda x: (x - TOLERANCIA_MENSUAL) if x > TOLERANCIA_MENSUAL else 0)
         resumen['Descuento'] = resumen['Excedente'] * COSTO_MINUTO
