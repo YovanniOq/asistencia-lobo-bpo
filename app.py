@@ -11,7 +11,7 @@ COSTO_MINUTO = 0.15
 HORA_ENTRADA_OFICIAL = "08:00:00" 
 TOLERANCIA_MENSUAL = 30 
 
-# --- ESTILOS CSS: AJUSTE DE ALTURA DEL LOGO ---
+# --- ESTILOS CSS: LOGOS LIMPIOS Y AJUSTE DE ALTURA ---
 st.markdown("""
     <style>
     .stApp {
@@ -26,7 +26,7 @@ st.markdown("""
         border-radius: 20px;
         box-shadow: 0 15px 35px rgba(0,0,0,0.1);
     }
-    /* Limpieza de logos y transparencia */
+    /* Limpieza de logos */
     img {
         background-color: transparent !important;
         mix-blend-mode: multiply;
@@ -76,11 +76,10 @@ with st.sidebar:
         clave = st.text_input("Contraseña:", type="password")
         if clave == "Lobo2026": modo = "Admin"
 
-# --- 4. CABECERA PRINCIPAL (CON AJUSTE DE ALTURA) ---
+# --- 4. CABECERA PRINCIPAL (LOGO ELEVADO) ---
 c_izq, c_logo_p, c_tit, c_der = st.columns([0.5, 3.5, 6, 0.5])
 with c_logo_p:
     if os.path.exists("logo_lobo.png"):
-        # Se reduce el padding-top para subir el logo
         st.markdown("<div style='padding-top: 15px;'>", unsafe_allow_html=True)
         st.image("logo_lobo.png", width=320)
         st.markdown("</div>", unsafe_allow_html=True)
@@ -104,15 +103,26 @@ if modo == "Marcación":
         st.cache_data.clear()
         df_emp = pd.read_csv("empleados.csv", dtype={'DNI': str})
         emp = df_emp[df_emp['DNI'] == str(dni_in).strip()]
+        
         if not emp.empty:
             nombre = emp.iloc[0]['Nombre']
             st.info(f"👤 TRABAJADOR: {nombre}")
+            
+            # FILA 1: INGRESO Y SALIDA GENERAL
             c1, c2 = st.columns(2)
             with c1:
-                if st.button("📥 INGRESO", use_container_width=True): st.success("INGRESO REGISTRADO")
+                if st.button("📥 INGRESO", use_container_width=True): st.success(f"INGRESO: {nombre}")
             with c2:
-                if st.button("📤 SALIDA", use_container_width=True): st.success("SALIDA REGISTRADA")
-        else: st.error("DNI no registrado.")
+                if st.button("📤 SALIDA", use_container_width=True): st.success(f"SALIDA: {nombre}")
+            
+            # FILA 2: SALIDA Y ENTRADA DE PERMISO
+            c3, c4 = st.columns(2)
+            with c3:
+                if st.button("🚶 SALIDA PERMISO", use_container_width=True): st.success(f"SALIDA PERMISO: {nombre}")
+            with c4:
+                if st.button("🏠 ENTRADA PERMISO", use_container_width=True): st.success(f"REGRESO PERMISO: {nombre}")
+        else:
+            st.error("DNI no registrado.")
 
 else: # --- PANEL ADMIN CON REPORTES ---
     st.header("📋 Reporte Auditado de Asistencia")
