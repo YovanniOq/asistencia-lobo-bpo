@@ -54,7 +54,7 @@ def registrar_en_nube(nombre, dni, tipo, obs=""):
         
         df_hist = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
         df_final = pd.concat([df_hist, nueva_fila], ignore_index=True)
-        conn.update(spreadsheet=url_ho_ja, worksheet="Sheet1", data=df_final)
+        conn.update(spreadsheet=url_hoja, worksheet="Sheet1", data=df_final)
         
         st.success(f"✅ {tipo} REGISTRADO")
         time.sleep(1.5)
@@ -83,8 +83,8 @@ components.html("""
     const f = () => {
         const i = window.parent.document.querySelectorAll('input[type="text"]');
         if (i.length > 0) {
-            if (window.parent.document.activeElement.tagName !== 'INPUT' && 
-                window.parent.document.activeElement.tagName !== 'TEXTAREA') {
+            const active = window.parent.document.activeElement;
+            if (active.tagName !== 'INPUT' && active.tagName !== 'TEXTAREA') {
                 i[0].focus();
             }
         }
@@ -152,30 +152,37 @@ if modo == "Marcación":
                     else: st.error("Escriba un motivo.")
         else: st.error("DNI no registrado.")
 
-else: # --- PANEL ADMIN RESTAURADO CON FILTROS Y RESUMEN ---
-    st.header("📊 Reporte y Resumen de Asistencia")
+else: # --- PANEL ADMIN RESTAURADO CON FILTROS POR FECHA Y USUARIO ---
+    st.header("📊 Auditoría de Asistencia")
     df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
     
     if not df_h.empty:
-        # Filtros
+        # Asegurar formato de fecha para el filtro
+        df_h['Fecha'] = pd.to_datetime(df_h['Fecha']).dt.date
+        
+        # Filtros Superiores
         c_f1, c_f2 = st.columns(2)
         with c_f1:
-            f_nom = st.multiselect("Filtrar por Nombre:", options=df_h['Nombre'].unique())
+            rango_fechas = st.date_input("Seleccionar Rango de Fechas:", [df_h['Fecha'].min(), df_h['Fecha'].max()])
         with c_f2:
-            f_tipo = st.multiselect("Filtrar por Movimiento:", options=df_h['Tipo'].unique())
+            usuarios_f = st.multiselect("Filtrar por Usuario:", options=df_h['Nombre'].unique())
         
+        # Lógica de Filtrado
         df_filtrado = df_h.copy()
-        if f_nom: df_filtrado = df_filtrado[df_filtrado['Nombre'].isin(f_nom)]
-        if f_tipo: df_filtrado = df_filtrado[df_filtrado['Tipo'].isin(f_tipo)]
+        if len(rango_fechas) == 2:
+            df_filtrado = df_filtrado[(df_filtrado['Fecha'] >= rango_fechas[0]) & (df_filtrado['Fecha'] <= rango_fechas[1])]
+        if usuarios_f:
+            df_filtrado = df_filtrado[df_filtrado['Nombre'].isin(usuarios_f)]
 
-        # Resumen
-        total_tardanza = df_filtrado['Tardanza_Min'].sum()
-        total_descuento = df_filtrado['Descuento_Soles'].sum()
+        # Resumen de Métricas
+        t_min = df_filtrado['Tardanza_Min'].sum()
+        t_soles = df_filtrado['Descuento_Soles'].sum()
         
-        c_m1, c_m2 = st.columns(2)
-        c_m1.metric("Total Minutos Tardanza", f"{total_tardanza} min")
-        c_m2.metric("Total Descuento Acumulado", f"S/. {total_descuento:.2f}")
+        c_m1, c_m2, c_m3 = st.columns(3)
+        c_m1.metric("Registros Encontrados", len(df_filtrado))
+        c_m2.metric("Total Minutos Tardanza", f"{t_min} min")
+        c_m3.metric("Total Descuento", f"S/. {t_soles:.2f}")
 
         st.divider()
-        st.dataframe(df_filtrado, use_container_width=True)
-    else: st.info("No hay datos registrados.")
+        st.dataframe(df_filtrado.sort_values(by=['Fecha', 'Hora'], ascending=False), use_container_width=True)
+    else: st.info("No hay datos registrados aún.")
