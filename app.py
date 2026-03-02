@@ -56,7 +56,7 @@ def registrar_en_nube(nombre, dni, tipo, obs=""):
         df_final = pd.concat([df_hist, nueva_fila], ignore_index=True)
         conn.update(spreadsheet=url_hoja, worksheet="Sheet1", data=df_final)
         
-        st.success(f"✅ {tipo} REGISTRADO CORRECTAMENTE")
+        st.success(f"✅ {tipo} REGISTRADO")
         time.sleep(1.5)
         st.session_state.reset_key += 1
         st.rerun()
@@ -68,64 +68,82 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 url_hoja = st.secrets["connections"]["gsheets"]["spreadsheet"]
 if "reset_key" not in st.session_state: st.session_state.reset_key = 0
 
-# --- 4. CABECERA PRINCIPAL ---
-c_logo, c_tit = st.columns([1, 2.5])
-with c_logo:
-    if os.path.exists("logo_lobo.png"): st.image("logo_lobo.png", width=320) #
+# --- 4. INTERFAZ LATERAL (RESTAURADA) ---
+modo = "Marcación"
+with st.sidebar:
+    if os.path.exists("Lobo.png"): st.image("Lobo.png", width=55) #
+    st.markdown("<h2 style='color: #1E3A8A; font-size: 21px; margin: 0;'>Gestión Lobo</h2>", unsafe_allow_html=True)
+    
+    st.divider()
+    acceso_admin = st.checkbox("Acceso Administrador")
+    if acceso_admin:
+        clave = st.text_input("Contraseña:", type="password")
+        if clave == "Lobo2026": modo = "Admin"
+
+# --- 5. CABECERA PRINCIPAL ---
+c_izq, c_logo_p, c_tit, c_der = st.columns([0.5, 3.5, 6, 0.5])
+with c_logo_p:
+    if os.path.exists("logo_lobo.png"):
+        st.markdown("<div style='padding-top: 15px;'>", unsafe_allow_html=True)
+        st.image("logo_lobo.png", width=320)
+        st.markdown("</div>", unsafe_allow_html=True)
 with c_tit:
     st.markdown("<h1 style='color: #1E3A8A; font-size: 50px; margin-top: 10px;'>Marcación Sr. Lobo</h1>", unsafe_allow_html=True)
 
 st.divider()
 
-# --- 5. INTERFAZ DE MARCACIÓN ---
-st.write("### DIGITE SU DNI:")
-# COLUMNA MINI PARA EL DNI (Ajuste a 12 caracteres visualmente)
-c_dni_fix, _ = st.columns([0.15, 0.85]) 
-with c_dni_fix:
-    dni_in = st.text_input("DNI", key=f"dni_{st.session_state.reset_key}", label_visibility="collapsed", max_chars=12) #
+if modo == "Marcación":
+    st.write("### DIGITE SU DNI:")
+    # CASILLA DNI COMPACTA (12 chars)
+    c_dni_box, _ = st.columns([0.15, 0.85]) 
+    with c_dni_box:
+        dni_in = st.text_input("DNI", key=f"dni_{st.session_state.reset_key}", label_visibility="collapsed", max_chars=12)
 
-if dni_in:
-    df_emp = pd.read_csv("empleados.csv", dtype={'DNI': str})
-    dni_limpio = str(dni_in).strip()
-    emp = df_emp[df_emp['DNI'] == dni_limpio]
-    
-    if not emp.empty:
-        nombre = emp.iloc[0]['Nombre']
-        st.info(f"👤 TRABAJADOR: {nombre}") #
+    if dni_in:
+        df_emp = pd.read_csv("empleados.csv", dtype={'DNI': str})
+        dni_limpio = str(dni_in).strip()
+        emp = df_emp[df_emp['DNI'] == dni_limpio]
         
-        # --- LÓGICA DE BLOQUEO ESTRICTA ---
-        df_hist = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
-        df_hist['DNI'] = df_hist['DNI'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
-        
-        hoy = obtener_hora_peru().strftime("%Y-%m-%d")
-        marcas_hoy = df_hist[(df_hist['DNI'] == dni_limpio) & (df_hist['Fecha'] == hoy)]
-        
-        ya_ingreso = "INGRESO" in marcas_hoy['Tipo'].values
-        ya_salio = "SALIDA" in marcas_hoy['Tipo'].values
-        en_permiso = (not marcas_hoy.empty and marcas_hoy.iloc[-1]['Tipo'] == "SALIDA PERMISO")
+        if not emp.empty:
+            nombre = emp.iloc[0]['Nombre']
+            st.info(f"👤 TRABAJADOR: {nombre}")
+            
+            # LÓGICA DE BLOQUEO EN TIEMPO REAL
+            df_hist = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
+            df_hist['DNI'] = df_hist['DNI'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+            hoy = obtener_hora_peru().strftime("%Y-%m-%d")
+            marcas_hoy = df_hist[(df_hist['DNI'] == dni_limpio) & (df_hist['Fecha'] == hoy)]
+            
+            ya_ingreso = "INGRESO" in marcas_hoy['Tipo'].values
+            ya_salio = "SALIDA" in marcas_hoy['Tipo'].values
+            en_permiso = (not marcas_hoy.empty and marcas_hoy.iloc[-1]['Tipo'] == "SALIDA PERMISO")
 
-        # CAMPO DE OBSERVACIÓN PARA PERMISOS
-        obs_txt = ""
-        if ya_ingreso and not ya_salio:
-            obs_txt = st.text_area("Motivo / Observación:", height=70)
+            # CAMPO DE OBSERVACIÓN
+            obs_txt = ""
+            if ya_ingreso and not ya_salio:
+                obs_txt = st.text_area("Motivo / Observación (Opcional):", height=70)
 
-        # RENDER DE BOTONES CON BLOQUEO REAL
-        c1, c2 = st.columns(2)
-        with c1:
-            if st.button("📥 INGRESO", use_container_width=True, disabled=ya_ingreso):
-                registrar_en_nube(nombre, dni_limpio, "INGRESO")
-        with c2:
-            if st.button("📤 SALIDA", use_container_width=True, disabled=(not ya_ingreso or ya_salio or en_permiso)):
-                registrar_en_nube(nombre, dni_limpio, "SALIDA", obs_txt)
-        
-        c3, c4 = st.columns(2)
-        with c3:
-            if st.button("🚶 SALIDA PERMISO", use_container_width=True, disabled=(not ya_ingreso or ya_salio or en_permiso)):
-                registrar_en_nube(nombre, dni_limpio, "SALIDA PERMISO", obs_txt)
-        with c4:
-            if st.button("🏠 ENTRADA PERMISO", use_container_width=True, disabled=(not en_permiso)):
-                registrar_en_nube(nombre, dni_limpio, "ENTRADA PERMISO", obs_txt)
-        
-        if ya_salio: st.warning("Usted ya registró su salida definitiva hoy.")
-    else:
-        st.error("DNI no registrado.")
+            # BOTONES CON BLOQUEO REAL
+            c1, c2 = st.columns(2)
+            with c1:
+                if st.button("📥 INGRESO", use_container_width=True, disabled=ya_ingreso):
+                    registrar_en_nube(nombre, dni_limpio, "INGRESO")
+            with c2:
+                if st.button("📤 SALIDA", use_container_width=True, disabled=(not ya_ingreso or ya_salio or en_permiso)):
+                    registrar_en_nube(nombre, dni_limpio, "SALIDA", obs_txt)
+            
+            c3, c4 = st.columns(2)
+            with c3:
+                if st.button("🚶 SALIDA PERMISO", use_container_width=True, disabled=(not ya_ingreso or ya_salio or en_permiso)):
+                    registrar_en_nube(nombre, dni_limpio, "SALIDA PERMISO", obs_txt)
+            with c4:
+                if st.button("🏠 ENTRADA PERMISO", use_container_width=True, disabled=(not en_permiso)):
+                    registrar_en_nube(nombre, dni_limpio, "ENTRADA PERMISO", obs_txt)
+        else:
+            st.error("DNI no registrado.")
+
+else: # --- PANEL ADMIN (RESTAURADO) ---
+    st.header("📋 Reporte Auditado de Asistencia")
+    df_reporte = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
+    if not df_reporte.empty:
+        st.dataframe(df_reporte[['Fecha', 'DNI', 'Nombre', 'Tipo', 'Hora', 'Tardanza_Min', 'Descuento_Soles', 'Observacion']], use_container_width=True)
