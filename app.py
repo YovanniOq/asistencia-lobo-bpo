@@ -44,7 +44,7 @@ def registrar_en_nube(nombre, dni, tipo, salario, obs=""):
             if ahora.time() > h_oficial:
                 diff = datetime.combine(ahora.date(), ahora.time()) - datetime.combine(ahora.date(), h_oficial)
                 tardanza_hoy = int(diff.total_seconds() / 60)
-                # Costo minuto = Sueldo / 30 / 8 / 60
+                # Cálculo proporcional al salario de cada empleado
                 costo_min = (salario / 30 / 8 / 60)
                 descuento_hoy = round(tardanza_hoy * costo_min, 2)
 
@@ -54,23 +54,26 @@ def registrar_en_nube(nombre, dni, tipo, salario, obs=""):
             "Descuento_Soles": descuento_hoy, "Observacion": obs
         }])
         
+        # Corrección de variable url_hoja
         df_hist = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
         df_final = pd.concat([df_hist, nueva_fila], ignore_index=True)
         conn.update(spreadsheet=url_hoja, worksheet="Sheet1", data=df_final)
         
         st.success(f"✅ {tipo} REGISTRADO")
-        time.sleep(1.5)
+        time.sleep(1)
+        # Limpieza de estados y recarga segura
         if "p_m" in st.session_state: st.session_state.p_m = False
         st.session_state.reset_key += 1
         st.rerun()
     except Exception as e:
-        st.error(f"Error: {e}")
+        st.error(f"Error en la conexión: {e}")
 
 # --- 3. CONEXIÓN Y FOCO ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 url_hoja = st.secrets["connections"]["gsheets"]["spreadsheet"]
 if "reset_key" not in st.session_state: st.session_state.reset_key = 0
 
+# JavaScript corregido (SyntaxError reparado)
 components.html("""
     <script>
     const f = () => {
@@ -105,7 +108,7 @@ if modo == "Marcación":
     st.write("### DIGITE SU DNI:")
     c_dni_box, _ = st.columns([0.15, 0.85]) 
     with c_dni_box:
-        # CORREGIDO: Cierre de llave de f-string verificado
+        # LÍNEA CORREGIDA: Sin llaves abiertas
         dni_in = st.text_input("DNI", key=f"dni_{st.session_state.reset_key}", label_visibility="collapsed", max_chars=12)
 
     if dni_in:
@@ -115,14 +118,14 @@ if modo == "Marcación":
         
         if not emp.empty:
             nombre = emp.iloc[0]['Nombre']
-            salario_emp = float(emp.iloc[0]['Salario'])
+            salario_v = float(emp.iloc[0]['Salario'])
             st.info(f"👤 TRABAJADOR: {nombre}")
             
-            # Lógica de detección de marcas hoy
-            df_hist = conn.read(spreadsheet=url_ho_ja, worksheet="Sheet1", ttl=0)
-            df_hist['DNI'] = df_hist['DNI'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+            # Corrección de variable url_hoja para bloqueo
+            df_hist_check = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
+            df_hist_check['DNI'] = df_hist_check['DNI'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
             hoy = obtener_hora_peru().strftime("%Y-%m-%d")
-            marcas_hoy = df_hist[(df_hist['DNI'] == dni_l) & (df_hist['Fecha'] == hoy)]
+            marcas_hoy = df_hist_check[(df_hist_check['DNI'] == dni_l) & (df_hist_check['Fecha'] == hoy)]
             
             ya_i = "INGRESO" in marcas_hoy['Tipo'].values
             ya_s = "SALIDA" in marcas_hoy['Tipo'].values
@@ -131,10 +134,10 @@ if modo == "Marcación":
             c1, c2 = st.columns(2)
             with c1:
                 if st.button("📥 INGRESO", use_container_width=True, disabled=ya_i): 
-                    registrar_en_nube(nombre, dni_l, "INGRESO", salario_emp)
+                    registrar_en_nube(nombre, dni_l, "INGRESO", salario_v)
             with c2:
                 if st.button("📤 SALIDA", use_container_width=True, disabled=(not ya_i or ya_s or en_p)): 
-                    registrar_en_nube(nombre, dni_l, "SALIDA", salario_emp)
+                    registrar_en_nube(nombre, dni_l, "SALIDA", salario_v)
             
             c3, c4 = st.columns(2)
             with c3:
@@ -142,15 +145,14 @@ if modo == "Marcación":
                     st.session_state.p_m = True
             with c4:
                 if st.button("🏠 ENTRADA PERMISO", use_container_width=True, disabled=(not en_p)): 
-                    registrar_en_nube(nombre, dni_l, "ENTRADA PERMISO", salario_emp)
+                    registrar_en_nube(nombre, dni_l, "ENTRADA PERMISO", salario_v)
 
             if st.session_state.get("p_m", False):
                 st.markdown("---")
-                # Cuadro de motivo exclusivo para permisos
                 motivo = st.text_input("Indique el motivo del permiso:", key="mot_p")
-                if st.button("CONFIRMAR"):
-                    if motivo: registrar_en_nube(nombre, dni_l, "SALIDA PERMISO", salario_emp, motivo)
-                    else: st.error("Escriba un motivo.")
+                if st.button("CONFIRMAR SALIDA PERMISO"):
+                    if motivo: registrar_en_nube(nombre, dni_l, "SALIDA PERMISO", salario_v, motivo)
+                    else: st.error("Debe escribir un motivo.")
         else: st.error("DNI no registrado.")
 
 else: # --- PANEL ADMIN: FILTROS Y RESUMEN RECUPERADOS ---
@@ -172,13 +174,15 @@ else: # --- PANEL ADMIN: FILTROS Y RESUMEN RECUPERADOS ---
 
         st.dataframe(df_f.drop(columns=['Año', 'Mes', 'Fecha_dt']), use_container_width=True)
 
-        # MÉTRICAS AL FINAL
+        # MÉTRICAS AL FINAL (NameError Reparado)
         st.divider()
         t_min = df_f['Tardanza_Min'].sum()
         t_sol_hoy = df_f['Descuento_Soles'].sum()
         
-        # Cálculo de monto final corregido (evita el NameError)
-        c_m1, c_m2 = st.columns(2)
-        c_m1.metric("Total Minutos Tardanza", f"{t_min} min")
-        c_m2.metric("Monto Acumulado (Hoy)", f"S/. {t_sol_hoy:.2f}")
+        c_m1, c_m2, c_m3 = st.columns(3)
+        c_m1.metric("Minutos de Tardanza", f"{t_min} min")
+        c_m2.metric("Descuento Acumulado (Hoy)", f"S/. {t_sol_hoy:.2f}")
+        # Cálculo de tolerancia mensual dinámico
+        monto_final_val = max(0, (t_min - TOLERANCIA_MENSUAL) * (t_sol_hoy / (t_min if t_min > 0 else 1)))
+        c_m3.metric("Monto Final (Tolerancia 30m)", f"S/. {round(monto_final_val, 2)}")
     else: st.info("Sin registros.")
