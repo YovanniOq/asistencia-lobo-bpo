@@ -11,7 +11,7 @@ st.set_page_config(page_title="Asistencia Lobo", layout="wide")
 COSTO_MINUTO = 0.15  
 HORA_ENTRADA_OFICIAL = "08:00:00" 
 
-# --- ESTILOS CSS ---
+# --- ESTILOS CSS: LOGOS Y GOTA DE AGUA ---
 st.markdown("""
     <style>
     .stApp {
@@ -22,8 +22,10 @@ st.markdown("""
     .main .block-container {
         background-color: rgba(255, 255, 255, 0.94);
         padding: 3rem; border-radius: 20px; box-shadow: 0 15px 35px rgba(0,0,0,0.1);
+        position: relative;
     }
     img { background-color: transparent !important; mix-blend-mode: multiply; border: none !important; }
+    .sidebar-brand-horizontal { display: flex; align-items: center; gap: 15px; margin-bottom: 25px; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -58,7 +60,7 @@ def registrar_en_nube(nombre, dni, tipo, obs=""):
         
         st.success(f"✅ {tipo} REGISTRADO")
         time.sleep(1.5)
-        if "motivo_permiso" in st.session_state: del st.session_state.motivo_permiso
+        if "mostrando_motivo" in st.session_state: st.session_state.mostrando_motivo = False
         st.session_state.reset_key += 1
         st.rerun()
     except Exception as e:
@@ -72,32 +74,47 @@ if "reset_key" not in st.session_state: st.session_state.reset_key = 0
 # --- 4. INTERFAZ LATERAL ---
 modo = "Marcación"
 with st.sidebar:
+    st.markdown("<div class='sidebar-brand-horizontal'>", unsafe_allow_html=True)
     if os.path.exists("Lobo.png"): st.image("Lobo.png", width=55)
-    st.markdown("### Gestión Lobo")
+    st.markdown("<h2 style='color: #1E3A8A; font-size: 21px; margin: 0;'>Gestión Lobo</h2>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+    
+    st.divider()
     acceso_admin = st.checkbox("Acceso Administrador")
     if acceso_admin:
-        if st.text_input("Contraseña:", type="password") == "Lobo2026": modo = "Admin"
+        clave = st.text_input("Contraseña:", type="password")
+        if clave == "Lobo2026": modo = "Admin"
 
-# --- FOCO AUTOMÁTICO AL DNI ---
-components.html(f"""
+# --- JAVASCRIPT DE FOCO INTELIGENTE (CORREGIDO) ---
+components.html("""
     <script>
-        const focusInput = () => {{
-            const inputs = window.parent.document.querySelectorAll('input[type="text"]');
-            if (inputs.length > 0) {{
-                inputs[0].focus();
-            }}
-        }};
-        setTimeout(focusInput, 500);
-        setInterval(focusInput, 2000); 
+    const forceFocus = () => {
+        const inputs = window.parent.document.querySelectorAll('input[type="text"]');
+        if (inputs.length > 0) {
+            const dniInput = inputs[0];
+            const activeElem = window.parent.document.activeElement;
+            
+            // Si el usuario ya está escribiendo en algún campo (DNI o Motivo), no lo muevas
+            if (activeElem.tagName === 'INPUT' || activeElem.tagName === 'TEXTAREA') {
+                return; 
+            }
+            
+            dniInput.focus();
+        }
+    };
+    setInterval(forceFocus, 1500);
     </script>
 """, height=0)
 
-# --- 5. CABECERA ---
-c_logo, c_tit = st.columns([1, 2.5])
-with c_logo:
-    if os.path.exists("logo_lobo.png"): st.image("logo_lobo.png", width=300)
+# --- 5. CABECERA PRINCIPAL ---
+c_izq, c_logo_p, c_tit, c_der = st.columns([0.5, 3.5, 6, 0.5])
+with c_logo_p:
+    if os.path.exists("logo_lobo.png"):
+        st.markdown("<div style='padding-top: 15px;'>", unsafe_allow_html=True)
+        st.image("logo_lobo.png", width=320)
+        st.markdown("</div>", unsafe_allow_html=True)
 with c_tit:
-    st.markdown("<h1 style='color: #1E3A8A;'>Marcación Sr. Lobo</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='color: #1E3A8A; font-size: 50px; margin-top: 10px;'>Marcación Sr. Lobo</h1>", unsafe_allow_html=True)
 
 st.divider()
 
@@ -116,7 +133,6 @@ if modo == "Marcación":
             nombre = emp.iloc[0]['Nombre']
             st.info(f"👤 TRABAJADOR: {nombre}")
             
-            # Lógica de estados
             df_hist = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
             df_hist['DNI'] = df_hist['DNI'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
             hoy = obtener_hora_peru().strftime("%Y-%m-%d")
@@ -126,7 +142,6 @@ if modo == "Marcación":
             ya_salio = "SALIDA" in marcas_hoy['Tipo'].values
             en_permiso = (not marcas_hoy.empty and marcas_hoy.iloc[-1]['Tipo'] == "SALIDA PERMISO")
 
-            # Botones principales
             c1, c2 = st.columns(2)
             with c1:
                 if st.button("📥 INGRESO", use_container_width=True, disabled=ya_ingreso):
@@ -137,28 +152,24 @@ if modo == "Marcación":
             
             c3, c4 = st.columns(2)
             with c3:
-                # Botón de Salida Permiso que activa la ventana de motivo
                 if st.button("🚶 SALIDA PERMISO", use_container_width=True, disabled=(not ya_ingreso or ya_salio or en_permiso)):
                     st.session_state.mostrando_motivo = True
-
             with c4:
                 if st.button("🏠 ENTRADA PERMISO", use_container_width=True, disabled=(not en_permiso)):
                     registrar_en_nube(nombre, dni_limpio, "ENTRADA PERMISO")
 
-            # Ventana/Caja de motivo para el permiso
             if st.session_state.get("mostrando_motivo", False):
                 st.markdown("---")
                 st.warning("⚠️ Indique el motivo de su salida de permiso:")
-                motivo = st.text_input("Escriba el motivo aquí:", key="motivo_input")
+                motivo = st.text_input("Escriba el motivo aquí:", key="motivo_permiso_input")
                 if st.button("🚀 CONFIRMAR SALIDA DE PERMISO"):
                     if motivo:
                         registrar_en_nube(nombre, dni_limpio, "SALIDA PERMISO", motivo)
-                        st.session_state.mostrando_motivo = False
                     else:
-                        st.error("Debe escribir un motivo antes de confirmar.")
+                        st.error("Debe escribir un motivo.")
         else:
             st.error("DNI no registrado.")
 else:
-    st.header("📋 Reporte de Asistencia")
-    df_reporte = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
-    st.dataframe(df_reporte, use_container_width=True)
+    st.header("📋 Reporte Auditado")
+    df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
+    st.dataframe(df_h, use_container_width=True)
