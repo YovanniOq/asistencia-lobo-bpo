@@ -12,7 +12,7 @@ COSTO_MINUTO = 0.15
 HORA_ENTRADA_OFICIAL = "08:00:00" 
 TOLERANCIA_MENSUAL = 30 
 
-# --- ESTILOS CSS: LOGOS TRANSPARENTES Y GOTA DE AGUA ---
+# --- ESTILOS CSS: LOGOS TRANSPARENTES Y AJUSTE DE ALTURA ---
 st.markdown("""
     <style>
     .stApp {
@@ -24,12 +24,6 @@ st.markdown("""
         background-color: rgba(255, 255, 255, 0.94);
         padding: 3rem; border-radius: 20px; box-shadow: 0 15px 35px rgba(0,0,0,0.1);
         position: relative;
-    }
-    .main .block-container::before {
-        content: ""; position: absolute; top: 50%; left: 50%; width: 500px; height: 500px;
-        background-image: url("https://raw.githubusercontent.com/Yovanni/asistencia/main/Lobo.png");
-        background-repeat: no-repeat; background-position: center; background-size: contain;
-        opacity: 0.05; transform: translate(-50%, -50%); pointer-events: none; z-index: 0;
     }
     img { background-color: transparent !important; mix-blend-mode: multiply; border: none !important; }
     .sidebar-brand-horizontal { display: flex; align-items: center; gap: 15px; margin-bottom: 25px; }
@@ -46,13 +40,12 @@ def registrar_en_nube(nombre, dni, tipo):
         fecha_str = ahora.strftime("%Y-%m-%d")
         hora_str = ahora.strftime("%H:%M:%S")
         
-        # VALIDACIÓN DE DUPLICADOS (Evita ensuciar el Sheet)
+        # Validación de duplicados para no ensuciar el Sheet
         df_hist = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
         ya_existe = df_hist[(df_hist['DNI'] == str(dni)) & (df_hist['Fecha'] == fecha_str) & (df_hist['Tipo'] == tipo)]
         
         if not ya_existe.empty and tipo in ["INGRESO", "SALIDA"]:
-            st.warning(f"⚠️ Ya existe un registro de {tipo} para hoy.")
-            time.sleep(2)
+            st.warning(f"⚠️ Registro de {tipo} ya realizado para hoy.")
             return
 
         tardanza = 0
@@ -70,7 +63,7 @@ def registrar_en_nube(nombre, dni, tipo):
         df_final = pd.concat([df_hist, nueva_fila], ignore_index=True)
         conn.update(spreadsheet=url_hoja, worksheet="Sheet1", data=df_final)
         
-        st.success(f"✅ {tipo} REGISTRADO CORRECTAMENTE")
+        st.success(f"✅ {tipo} REGISTRADO")
         time.sleep(1.5)
         st.session_state.reset_key += 1
         st.rerun()
@@ -109,11 +102,11 @@ if not acceso_admin:
         setInterval(f, 1000);
     </script>""", height=0)
 
-# --- 5. CABECERA PRINCIPAL ---
+# --- 5. CABECERA PRINCIPAL (LOGO ELEVADO A 15PX) ---
 c_izq, c_logo_p, c_tit, c_der = st.columns([0.5, 3.5, 6, 0.5])
 with c_logo_p:
     if os.path.exists("logo_lobo.png"):
-        st.markdown("<div style='padding-top: 15px;'>", unsafe_allow_html=True)
+        st.markdown("<div style='padding-top: 15px;'>", unsafe_allow_html=True) #
         st.image("logo_lobo.png", width=320)
         st.markdown("</div>", unsafe_allow_html=True)
 with c_tit:
@@ -123,7 +116,10 @@ st.divider()
 
 if modo == "Marcación":
     st.write("### DIGITE SU DNI:")
-    dni_in = st.text_input("DNI", key=f"dni_{st.session_state.reset_key}", label_visibility="collapsed", max_chars=12)
+    c_dni, _ = st.columns([1, 4])
+    with c_dni:
+        # BLINDAJE RESTAURADO: max_chars=12
+        dni_in = st.text_input("DNI", key=f"dni_{st.session_state.reset_key}", label_visibility="collapsed", max_chars=12)
 
     if dni_in:
         df_emp = pd.read_csv("empleados.csv", dtype={'DNI': str})
@@ -133,7 +129,6 @@ if modo == "Marcación":
             nombre = emp.iloc[0]['Nombre']
             st.info(f"👤 TRABAJADOR: {nombre}")
             
-            # BOTONES SIEMPRE HABILITADOS PARA EVITAR BLOQUEOS
             c1, c2 = st.columns(2)
             with c1:
                 if st.button("📥 INGRESO", use_container_width=True):
@@ -156,5 +151,4 @@ else: # --- PANEL ADMIN ---
     st.header("📋 Reporte Auditado de Asistencia")
     df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
     if not df_h.empty:
-        # Aquí va toda la lógica de filtros (Año, Mes, Nombre) y cálculos de multas que ya teníamos
-        st.dataframe(df_h, use_container_width=True)
+        st.dataframe(df_h, use_container_width=True) #
