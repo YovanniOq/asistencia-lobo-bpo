@@ -8,10 +8,10 @@ import streamlit.components.v1 as components
 
 # --- 1. CONFIGURACIÓN ---
 st.set_page_config(page_title="Asistencia Lobo", layout="wide")
-COSTO_MINUTO = 0.15  #
+COSTO_MINUTO = 0.15  
 HORA_ENTRADA_OFICIAL = "08:00:00" 
 
-# --- ESTILOS CSS ---
+# --- ESTILOS CSS: LOGOS TRANSPARENTES Y AJUSTE DE ALTURA ---
 st.markdown("""
     <style>
     .stApp {
@@ -44,35 +44,36 @@ def registrar_en_nube(nombre, dni, tipo):
             if ahora.time() > h_oficial:
                 diff = datetime.combine(ahora.date(), ahora.time()) - datetime.combine(ahora.date(), h_oficial)
                 tardanza = int(diff.total_seconds() / 60)
-                descuento = tardanza * COSTO_MINUTO # Cálculo de descuento
+                descuento = round(tardanza * COSTO_MINUTO, 2)
 
         nueva_fila = pd.DataFrame([{
+            "Fecha": fecha_str,
             "DNI": str(dni).strip(),
             "Nombre": nombre,
-            "Fecha": fecha_str,
-            "Hora": hora_str,
             "Tipo": tipo,
+            "Hora": hora_str,
             "Tardanza_Min": tardanza,
-            "Descuento_Soles": descuento # Columna restaurada
+            "Descuento_Soles": descuento
         }])
         
+        # Lectura fresca sin caché
         df_actual = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
         df_final = pd.concat([df_actual, nueva_fila], ignore_index=True)
         conn.update(spreadsheet=url_hoja, worksheet="Sheet1", data=df_final)
         
-        st.success(f"✅ {tipo} REGISTRADO")
-        time.sleep(1)
+        st.success(f"✅ {tipo} REGISTRADO CORRECTAMENTE")
+        time.sleep(1.5)
         st.session_state.reset_key += 1
         st.rerun()
     except Exception as e:
-        st.error(f"Error: {e}")
+        st.error(f"Error de conexión: {e}")
 
 # --- 3. CONEXIÓN ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 url_hoja = st.secrets["connections"]["gsheets"]["spreadsheet"]
 if "reset_key" not in st.session_state: st.session_state.reset_key = 0
 
-# --- 4. INTERFAZ ---
+# --- 4. INTERFAZ LATERAL ---
 modo = "Marcación"
 with st.sidebar:
     if os.path.exists("Lobo.png"): st.image("Lobo.png", width=55)
@@ -81,18 +82,18 @@ with st.sidebar:
     if acceso_admin:
         if st.text_input("Contraseña:", type="password") == "Lobo2026": modo = "Admin"
 
-# --- 5. CABECERA ---
-c_logo, c_tit = st.columns([1, 2])
+# --- 5. CABECERA PRINCIPAL ---
+c_logo, c_tit = st.columns([1, 2.5])
 with c_logo:
-    if os.path.exists("logo_lobo.png"): st.image("logo_lobo.png", width=300)
+    if os.path.exists("logo_lobo.png"): st.image("logo_lobo.png", width=320)
 with c_tit:
-    st.markdown("<h1 style='color: #1E3A8A;'>Marcación Sr. Lobo</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='color: #1E3A8A; font-size: 50px; margin-top: 10px;'>Marcación Sr. Lobo</h1>", unsafe_allow_html=True)
 
 st.divider()
 
 if modo == "Marcación":
     st.write("### DIGITE SU DNI:")
-    # BLINDAJE 12 CARACTERES RESTAURADO
+    # BLINDAJE DE 12 CARACTERES RESTAURADO
     dni_in = st.text_input("DNI", key=f"dni_{st.session_state.reset_key}", label_visibility="collapsed", max_chars=12)
 
     if dni_in:
@@ -104,40 +105,44 @@ if modo == "Marcación":
             nombre = emp.iloc[0]['Nombre']
             st.info(f"👤 TRABAJADOR: {nombre}")
             
-            # --- LÓGICA DE BLOQUEO ESTRICTA ---
+            # --- LÓGICA DE BLOQUEO (ULTRA-ESTRICTA) ---
             df_hist = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
-            df_hist['DNI'] = df_hist['DNI'].astype(str).str.strip()
+            # Normalizamos el DNI de la base de datos para que no falle la comparación
+            df_hist['DNI'] = df_hist['DNI'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
             
             hoy = obtener_hora_peru().strftime("%Y-%m-%d")
             marcas_hoy = df_hist[(df_hist['DNI'] == dni_limpio) & (df_hist['Fecha'] == hoy)]
             
+            # Verificación de estados
             ya_ingreso = "INGRESO" in marcas_hoy['Tipo'].values
             ya_salio = "SALIDA" in marcas_hoy['Tipo'].values
             en_permiso = (not marcas_hoy.empty and marcas_hoy.iloc[-1]['Tipo'] == "SALIDA PERMISO")
 
+            # --- BOTONES CON BLOQUEO REAL ---
             c1, c2 = st.columns(2)
             with c1:
-                if st.button("📥 INGRESO", use_container_width=True, disabled=ya_ingreso):
-                    registrar_en_nube(nombre, dni_limpio, "INGRESO")
+                # SE BLOQUEA SI YA INGRESÓ HOY
+                st.button("📥 INGRESO", use_container_width=True, disabled=ya_ingreso, 
+                          on_click=registrar_en_nube, args=(nombre, dni_limpio, "INGRESO"))
             with c2:
-                if st.button("📤 SALIDA", use_container_width=True, disabled=(not ya_ingreso or ya_salio or en_permiso)):
-                    registrar_en_nube(nombre, dni_limpio, "SALIDA")
+                # SE HABILITA SI YA INGRESÓ Y NO HA SALIDO DEFINITIVAMENTE
+                st.button("📤 SALIDA", use_container_width=True, disabled=(not ya_ingreso or ya_salio or en_permiso),
+                          on_click=registrar_en_nube, args=(nombre, dni_limpio, "SALIDA"))
             
             c3, c4 = st.columns(2)
             with c3:
-                if st.button("🚶 SALIDA PERMISO", use_container_width=True, disabled=(not ya_ingreso or ya_salio or en_permiso)):
-                    registrar_en_nube(nombre, dni_limpio, "SALIDA PERMISO")
+                st.button("🚶 SALIDA PERMISO", use_container_width=True, disabled=(not ya_ingreso or ya_salio or en_permiso),
+                          on_click=registrar_en_nube, args=(nombre, dni_limpio, "SALIDA PERMISO"))
             with c4:
-                if st.button("🏠 ENTRADA PERMISO", use_container_width=True, disabled=(not en_permiso)):
-                    registrar_en_nube(nombre, dni_limpio, "ENTRADA PERMISO")
+                st.button("🏠 ENTRADA PERMISO", use_container_width=True, disabled=(not en_permiso),
+                          on_click=registrar_en_nube, args=(nombre, dni_limpio, "ENTRADA PERMISO"))
+            
+            if ya_salio: st.warning("Usted ya registró su salida definitiva hoy.")
         else:
             st.error("DNI no registrado.")
 else:
-    # --- REPORTE CON MONTO A DESCONTAR AL COSTADO ---
-    st.header("📋 Reporte de Asistencia y Descuentos")
+    # --- PANEL ADMIN CON COLUMNA DE DESCUENTO ---
+    st.header("📋 Reporte Auditado de Asistencia")
     df_reporte = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
     if not df_reporte.empty:
-        # Mostramos las columnas clave incluyendo el descuento
-        st.dataframe(df_reporte[['DNI', 'Nombre', 'Fecha', 'Hora', 'Tipo', 'Tardanza_Min', 'Descuento_Soles']], use_container_width=True)
-    else:
-        st.info("No hay registros para mostrar.")
+        st.dataframe(df_reporte[['Fecha', 'DNI', 'Nombre', 'Tipo', 'Hora', 'Tardanza_Min', 'Descuento_Soles']], use_container_width=True)
