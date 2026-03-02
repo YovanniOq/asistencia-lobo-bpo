@@ -45,7 +45,7 @@ def registrar_en_nube(nombre, dni, tipo, obs=""):
             if ahora.time() > h_oficial:
                 diff = datetime.combine(ahora.date(), ahora.time()) - datetime.combine(ahora.date(), h_oficial)
                 tardanza_hoy = int(diff.total_seconds() / 60)
-                descuento_hoy = round(tardanza_hoy * COSTO_MINUTO, 2) # Cálculo directo sin tolerancia hoy
+                descuento_hoy = round(tardanza_hoy * COSTO_MINUTO, 2)
 
         nueva_fila = pd.DataFrame([{
             "Fecha": fecha_str, "DNI": str(dni).strip(), "Nombre": nombre,
@@ -143,8 +143,8 @@ if modo == "Marcación":
                     else: st.error("Escriba un motivo.")
         else: st.error("DNI no registrado.")
 
-else: # --- PANEL ADMIN: FILTROS AÑO / MES ---
-    st.header("📊 Reporte de Asistencia Lobo")
+else: # --- PANEL ADMIN ---
+    st.header("📊 Reporte Mensual Lobo")
     df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
     
     if not df_h.empty:
@@ -152,27 +152,29 @@ else: # --- PANEL ADMIN: FILTROS AÑO / MES ---
         df_h['Año'] = df_h['Fecha'].dt.year
         df_h['Mes'] = df_h['Fecha'].dt.month
         
+        # Filtros arriba
         c_a, c_m, c_u = st.columns(3)
         with c_a: f_anio = st.selectbox("Año:", sorted(df_h['Año'].unique(), reverse=True))
         with c_m: f_mes = st.selectbox("Mes:", range(1, 13), index=obtener_hora_peru().month-1)
-        with c_u: f_usu = st.multiselect("Usuario (Opcional):", options=df_h['Nombre'].unique())
+        with c_u: f_usu = st.multiselect("Usuario:", options=df_h['Nombre'].unique())
         
         df_f = df_h[(df_h['Año'] == f_anio) & (df_h['Mes'] == f_mes)]
         if f_usu: df_f = df_f[df_f['Nombre'].isin(f_usu)]
 
-        # --- CÁLCULOS ---
-        total_minutos = df_f['Tardanza_Min'].sum()
-        total_descuento_bruto = df_f['Descuento_Soles'].sum()
+        # Tabla de datos central
+        st.dataframe(df_f.drop(columns=['Año', 'Mes']), use_container_width=True)
+
+        # MÉTRICAS AL FINAL DEL REPORTE
+        st.divider()
+        t_min = df_f['Tardanza_Min'].sum()
+        t_sol_hoy = df_f['Descuento_Soles'].sum()
         
-        # Aplicación de tolerancia de 30 min sobre el total mensual filtrado
-        minutos_con_tolerancia = max(0, total_minutos - TOLERANCIA_MENSUAL)
-        monto_final_mes = round(minutos_con_tolerancia * COSTO_MINUTO, 2)
+        # Lógica de tolerancia mensual
+        min_con_tol = max(0, t_min - TOLERANCIA_MENSUAL)
+        monto_final = round(min_con_tol * COSTO_MINUTO, 2)
         
         c_m1, c_m2, c_m3 = st.columns(3)
-        c_m1.metric("Minutos de Tardanza", f"{total_minutos} min")
-        c_m2.metric("Descuento Acumulado (Hoy)", f"S/. {total_descuento_bruto:.2f}")
-        c_m3.metric("Monto Final (Aplicando Tolerancia 30m)", f"S/. {monto_final_mes:.2f}")
-
-        st.divider()
-        st.dataframe(df_f.drop(columns=['Año', 'Mes']), use_container_width=True)
+        c_m1.metric("Minutos de Tardanza", f"{t_min} min")
+        c_m2.metric("Descuento Acumulado (Hoy)", f"S/. {t_sol_hoy:.2f}")
+        c_m3.metric("Monto Final (Tolerancia 30m)", f"S/. {monto_final:.2f}")
     else: st.info("Sin registros.")
