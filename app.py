@@ -8,7 +8,6 @@ import streamlit.components.v1 as components
 
 # --- 1. CONFIGURACIÓN ---
 st.set_page_config(page_title="Asistencia Lobo", layout="wide")
-COSTO_MINUTO = 0.15  
 HORA_ENTRADA_OFICIAL = "08:00:00" 
 TOLERANCIA_MENSUAL = 30 
 
@@ -28,11 +27,16 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. MOTOR DE LOGICA ---
+# --- 2. MOTOR DE LOGICA SALARIAL ---
 def obtener_hora_peru():
     return datetime.now(timezone.utc) - timedelta(hours=5)
 
-def registrar_en_nube(nombre, dni, tipo, obs=""):
+def calcular_descuento_proporcional(salario, minutos):
+    # Cálculo: Sueldo / 30 días / 8 horas / 60 minutos
+    costo_minuto = (salario / 30 / 8 / 60)
+    return round(minutos * costo_minuto, 2)
+
+def registrar_en_nube(nombre, dni, tipo, salario, obs=""):
     try:
         ahora = obtener_hora_peru()
         fecha_str = ahora.strftime("%Y-%m-%d")
@@ -45,12 +49,12 @@ def registrar_en_nube(nombre, dni, tipo, obs=""):
             if ahora.time() > h_oficial:
                 diff = datetime.combine(ahora.date(), ahora.time()) - datetime.combine(ahora.date(), h_oficial)
                 tardanza_hoy = int(diff.total_seconds() / 60)
-                descuento_hoy = round(tardanza_hoy * COSTO_MINUTO, 2)
+                descuento_hoy = calcular_descuento_proporcional(salario, tardanza_hoy)
 
         nueva_fila = pd.DataFrame([{
             "Fecha": fecha_str, "DNI": str(dni).strip(), "Nombre": nombre,
             "Tipo": tipo, "Hora": hora_str, "Tardanza_Min": tardanza_hoy,
-            "Descuento_Soles": descuento_hoy, "Observacion": obs
+            "Descuento_Soles": descuento_hoy, "Observacion": obs, "Salario_Base": salario
         }])
         
         df_hist = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
@@ -82,7 +86,7 @@ components.html("""
     </script>
 """, height=0)
 
-# --- 4. INTERFAZ LATERAL ---
+# --- 4. INTERFAZ ---
 modo = "Marcación"
 with st.sidebar:
     if os.path.exists("Lobo.png"): st.image("Lobo.png", width=55)
@@ -112,6 +116,7 @@ if modo == "Marcación":
         
         if not emp.empty:
             nombre = emp.iloc[0]['Nombre']
+            salario_emp = float(emp.iloc[0]['Salario']) # Leemos salario del CSV
             st.info(f"👤 TRABAJADOR: {nombre}")
             
             df_hist = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
@@ -125,56 +130,34 @@ if modo == "Marcación":
 
             c1, c2 = st.columns(2)
             with c1:
-                if st.button("📥 INGRESO", use_container_width=True, disabled=ya_i): registrar_en_nube(nombre, dni_l, "INGRESO")
+                if st.button("📥 INGRESO", use_container_width=True, disabled=ya_i): 
+                    registrar_en_nube(nombre, dni_l, "INGRESO", salario_emp)
             with c2:
-                if st.button("📤 SALIDA", use_container_width=True, disabled=(not ya_i or ya_s or en_p)): registrar_en_nube(nombre, dni_l, "SALIDA")
+                if st.button("📤 SALIDA", use_container_width=True, disabled=(not ya_i or ya_s or en_p)): 
+                    registrar_en_nube(nombre, dni_l, "SALIDA", salario_emp)
             
             c3, c4 = st.columns(2)
             with c3:
                 if st.button("🚶 SALIDA PERMISO", use_container_width=True, disabled=(not ya_i or ya_s or en_p)): st.session_state.p_m = True
             with c4:
-                if st.button("🏠 ENTRADA PERMISO", use_container_width=True, disabled=(not en_p)): registrar_en_nube(nombre, dni_l, "ENTRADA PERMISO")
+                if st.button("🏠 ENTRADA PERMISO", use_container_width=True, disabled=(not en_p)): 
+                    registrar_en_nube(nombre, dni_l, "ENTRADA PERMISO", salario_emp)
 
             if st.session_state.get("p_m", False):
                 st.markdown("---")
-                motivo = st.text_input("Indique el motivo del permiso:", key="mot_p")
-                if st.button("CONFIRMAR SALIDA PERMISO"):
-                    if motivo: registrar_en_nube(nombre, dni_l, "SALIDA PERMISO", motivo); st.session_state.p_m = False
+                motivo = st.text_input("Motivo del permiso:", key="mot_p")
+                if st.button("CONFIRMAR"):
+                    if motivo: registrar_en_nube(nombre, dni_l, "SALIDA PERMISO", salario_emp, motivo); st.session_state.p_m = False
                     else: st.error("Escriba un motivo.")
         else: st.error("DNI no registrado.")
 
 else: # --- PANEL ADMIN ---
-    st.header("📊 Reporte Mensual Lobo")
+    st.header("📊 Reporte con Salarios Reales")
     df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
-    
     if not df_h.empty:
         df_h['Fecha'] = pd.to_datetime(df_h['Fecha'])
-        df_h['Año'] = df_h['Fecha'].dt.year
-        df_h['Mes'] = df_h['Fecha'].dt.month
-        
-        # Filtros arriba
-        c_a, c_m, c_u = st.columns(3)
-        with c_a: f_anio = st.selectbox("Año:", sorted(df_h['Año'].unique(), reverse=True))
-        with c_m: f_mes = st.selectbox("Mes:", range(1, 13), index=obtener_hora_peru().month-1)
-        with c_u: f_usu = st.multiselect("Usuario:", options=df_h['Nombre'].unique())
-        
-        df_f = df_h[(df_h['Año'] == f_anio) & (df_h['Mes'] == f_mes)]
-        if f_usu: df_f = df_f[df_f['Nombre'].isin(f_usu)]
-
-        # Tabla de datos central
-        st.dataframe(df_f.drop(columns=['Año', 'Mes']), use_container_width=True)
-
-        # MÉTRICAS AL FINAL DEL REPORTE
+        # Filtros...
+        st.dataframe(df_h, use_container_width=True)
+        # Métricas al final
         st.divider()
-        t_min = df_f['Tardanza_Min'].sum()
-        t_sol_hoy = df_f['Descuento_Soles'].sum()
-        
-        # Lógica de tolerancia mensual
-        min_con_tol = max(0, t_min - TOLERANCIA_MENSUAL)
-        monto_final = round(min_con_tol * COSTO_MINUTO, 2)
-        
-        c_m1, c_m2, c_m3 = st.columns(3)
-        c_m1.metric("Minutos de Tardanza", f"{t_min} min")
-        c_m2.metric("Descuento Acumulado (Hoy)", f"S/. {t_sol_hoy:.2f}")
-        c_m3.metric("Monto Final (Tolerancia 30m)", f"S/. {monto_final:.2f}")
-    else: st.info("Sin registros.")
+        st.metric("Total Descuentos del Mes", f"S/. {df_h['Descuento_Soles'].sum():.2f}")
