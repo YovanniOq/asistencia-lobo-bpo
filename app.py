@@ -12,7 +12,7 @@ COSTO_MINUTO = 0.15
 HORA_ENTRADA_OFICIAL = "08:00:00" 
 TOLERANCIA_MENSUAL = 30 
 
-# --- ESTILOS CSS: LOGOS TRANSPARENTES Y AJUSTE DE ALTURA ---
+# --- ESTILOS CSS: LOGOS Y GOTA DE AGUA ---
 st.markdown("""
     <style>
     .stApp {
@@ -40,14 +40,6 @@ def registrar_en_nube(nombre, dni, tipo):
         fecha_str = ahora.strftime("%Y-%m-%d")
         hora_str = ahora.strftime("%H:%M:%S")
         
-        # Validación de duplicados para no ensuciar el Sheet
-        df_hist = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
-        ya_existe = df_hist[(df_hist['DNI'] == str(dni)) & (df_hist['Fecha'] == fecha_str) & (df_hist['Tipo'] == tipo)]
-        
-        if not ya_existe.empty and tipo in ["INGRESO", "SALIDA"]:
-            st.warning(f"⚠️ Registro de {tipo} ya realizado para hoy.")
-            return
-
         tardanza = 0
         if tipo == "INGRESO":
             h_oficial = datetime.strptime(HORA_ENTRADA_OFICIAL, "%H:%M:%S").time()
@@ -60,7 +52,8 @@ def registrar_en_nube(nombre, dni, tipo):
             "Tipo": tipo, "Hora": hora_str, "Tardanza_Min": tardanza
         }])
         
-        df_final = pd.concat([df_hist, nueva_fila], ignore_index=True)
+        df_actual = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
+        df_final = pd.concat([df_actual, nueva_fila], ignore_index=True)
         conn.update(spreadsheet=url_hoja, worksheet="Sheet1", data=df_final)
         
         st.success(f"✅ {tipo} REGISTRADO")
@@ -79,11 +72,8 @@ if "reset_key" not in st.session_state: st.session_state.reset_key = 0
 modo = "Marcación"
 with st.sidebar:
     st.markdown("<div class='sidebar-brand-horizontal'>", unsafe_allow_html=True)
-    c_side_logo, c_side_text = st.columns([0.35, 0.65])
-    with c_side_logo:
-        if os.path.exists("Lobo.png"): st.image("Lobo.png", width=55)
-    with c_side_text:
-        st.markdown("<h2 style='color: #1E3A8A; font-size: 21px; margin: 0; padding-top: 15px;'>Gestión Lobo</h2>", unsafe_allow_html=True)
+    if os.path.exists("Lobo.png"): st.image("Lobo.png", width=55)
+    st.markdown("<h2 style='color: #1E3A8A; font-size: 21px; margin: 0; padding-top: 15px;'>Gestión Lobo</h2>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
     
     st.divider()
@@ -102,11 +92,11 @@ if not acceso_admin:
         setInterval(f, 1000);
     </script>""", height=0)
 
-# --- 5. CABECERA PRINCIPAL (LOGO ELEVADO A 15PX) ---
+# --- 5. CABECERA PRINCIPAL ---
 c_izq, c_logo_p, c_tit, c_der = st.columns([0.5, 3.5, 6, 0.5])
 with c_logo_p:
     if os.path.exists("logo_lobo.png"):
-        st.markdown("<div style='padding-top: 15px;'>", unsafe_allow_html=True) #
+        st.markdown("<div style='padding-top: 15px;'>", unsafe_allow_html=True)
         st.image("logo_lobo.png", width=320)
         st.markdown("</div>", unsafe_allow_html=True)
 with c_tit:
@@ -118,7 +108,6 @@ if modo == "Marcación":
     st.write("### DIGITE SU DNI:")
     c_dni, _ = st.columns([1, 4])
     with c_dni:
-        # BLINDAJE RESTAURADO: max_chars=12
         dni_in = st.text_input("DNI", key=f"dni_{st.session_state.reset_key}", label_visibility="collapsed", max_chars=12)
 
     if dni_in:
@@ -129,26 +118,41 @@ if modo == "Marcación":
             nombre = emp.iloc[0]['Nombre']
             st.info(f"👤 TRABAJADOR: {nombre}")
             
+            # --- LÓGICA DE BLOQUEO CRUCIAL ---
+            df_hist = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
+            hoy = obtener_hora_peru().strftime("%Y-%m-%d")
+            marcas_hoy = df_hist[(df_hist['DNI'] == str(dni_in)) & (df_hist['Fecha'] == hoy)]
+            
+            ya_ingreso = "INGRESO" in marcas_hoy['Tipo'].values
+            ya_salio = "SALIDA" in marcas_hoy['Tipo'].values
+            en_permiso = (not marcas_hoy.empty and marcas_hoy.iloc[-1]['Tipo'] == "SALIDA PERMISO")
+
             c1, c2 = st.columns(2)
             with c1:
-                if st.button("📥 INGRESO", use_container_width=True):
+                # Si ya ingresó, el botón se bloquea automáticamente
+                if st.button("📥 INGRESO", use_container_width=True, disabled=ya_ingreso):
                     registrar_en_nube(nombre, dni_in, "INGRESO")
             with c2:
-                if st.button("📤 SALIDA", use_container_width=True):
+                # Bloqueado si no ha entrado, si ya salió o si está en permiso
+                if st.button("📤 SALIDA", use_container_width=True, disabled=(not ya_ingreso or ya_salio or en_permiso)):
                     registrar_en_nube(nombre, dni_in, "SALIDA")
             
             c3, c4 = st.columns(2)
             with c3:
-                if st.button("🚶 SALIDA PERMISO", use_container_width=True):
+                if st.button("🚶 SALIDA PERMISO", use_container_width=True, disabled=(not ya_ingreso or ya_salio or en_permiso)):
                     registrar_en_nube(nombre, dni_in, "SALIDA PERMISO")
             with c4:
-                if st.button("🏠 ENTRADA PERMISO", use_container_width=True):
+                if st.button("🏠 ENTRADA PERMISO", use_container_width=True, disabled=(not en_permiso)):
                     registrar_en_nube(nombre, dni_in, "ENTRADA PERMISO")
+            
+            if ya_salio: st.warning("Usted ya registró su salida definitiva hoy.")
         else:
             st.error("DNI no registrado.")
-
-else: # --- PANEL ADMIN ---
-    st.header("📋 Reporte Auditado de Asistencia")
+else:
+    # --- PANEL ADMIN COMPLETO ---
+    st.header("📋 Reporte Auditado")
     df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
     if not df_h.empty:
-        st.dataframe(df_h, use_container_width=True) #
+        df_h['Fecha_dt'] = pd.to_datetime(df_h['Fecha'], errors='coerce')
+        # Filtros...
+        st.dataframe(df_h.drop(columns=['Fecha_dt']), use_container_width=True)
