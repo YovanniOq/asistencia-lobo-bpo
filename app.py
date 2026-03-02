@@ -11,7 +11,7 @@ st.set_page_config(page_title="Asistencia Lobo", layout="wide")
 COSTO_MINUTO = 0.15  
 HORA_ENTRADA_OFICIAL = "08:00:00" 
 
-# --- ESTILOS CSS: LOGOS Y GOTA DE AGUA ---
+# --- ESTILOS CSS ---
 st.markdown("""
     <style>
     .stApp {
@@ -22,10 +22,8 @@ st.markdown("""
     .main .block-container {
         background-color: rgba(255, 255, 255, 0.94);
         padding: 3rem; border-radius: 20px; box-shadow: 0 15px 35px rgba(0,0,0,0.1);
-        position: relative;
     }
     img { background-color: transparent !important; mix-blend-mode: multiply; border: none !important; }
-    .sidebar-brand-horizontal { display: flex; align-items: center; gap: 15px; margin-bottom: 25px; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -56,11 +54,10 @@ def registrar_en_nube(nombre, dni, tipo, obs=""):
         
         df_hist = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
         df_final = pd.concat([df_hist, nueva_fila], ignore_index=True)
-        conn.update(spreadsheet=url_hoja, worksheet="Sheet1", data=df_final)
+        conn.update(spreadsheet=url_ho_ja, worksheet="Sheet1", data=df_final)
         
         st.success(f"✅ {tipo} REGISTRADO")
         time.sleep(1.5)
-        if "mostrando_motivo" in st.session_state: st.session_state.mostrando_motivo = False
         st.session_state.reset_key += 1
         st.rerun()
     except Exception as e:
@@ -74,47 +71,34 @@ if "reset_key" not in st.session_state: st.session_state.reset_key = 0
 # --- 4. INTERFAZ LATERAL ---
 modo = "Marcación"
 with st.sidebar:
-    st.markdown("<div class='sidebar-brand-horizontal'>", unsafe_allow_html=True)
     if os.path.exists("Lobo.png"): st.image("Lobo.png", width=55)
-    st.markdown("<h2 style='color: #1E3A8A; font-size: 21px; margin: 0;'>Gestión Lobo</h2>", unsafe_allow_html=True)
-    st.markdown("</div>", unsafe_allow_html=True)
-    
-    st.divider()
+    st.markdown("### Gestión Lobo")
     acceso_admin = st.checkbox("Acceso Administrador")
     if acceso_admin:
-        clave = st.text_input("Contraseña:", type="password")
-        if clave == "Lobo2026": modo = "Admin"
+        if st.text_input("Contraseña:", type="password") == "Lobo2026": modo = "Admin"
 
-# --- JAVASCRIPT DE FOCO INTELIGENTE (CORREGIDO) ---
+# --- FOCO INTELIGENTE ---
 components.html("""
     <script>
-    const forceFocus = () => {
-        const inputs = window.parent.document.querySelectorAll('input[type="text"]');
-        if (inputs.length > 0) {
-            const dniInput = inputs[0];
-            const activeElem = window.parent.document.activeElement;
-            
-            // Si el usuario ya está escribiendo en algún campo (DNI o Motivo), no lo muevas
-            if (activeElem.tagName === 'INPUT' || activeElem.tagName === 'TEXTAREA') {
-                return; 
+    const f = () => {
+        const i = window.parent.document.querySelectorAll('input[type="text"]');
+        if (i.length > 0) {
+            if (window.parent.document.activeElement.tagName !== 'INPUT' && 
+                window.parent.document.activeElement.tagName !== 'TEXTAREA') {
+                i[0].focus();
             }
-            
-            dniInput.focus();
         }
     };
-    setInterval(forceFocus, 1500);
+    setInterval(f, 2000);
     </script>
 """, height=0)
 
-# --- 5. CABECERA PRINCIPAL ---
-c_izq, c_logo_p, c_tit, c_der = st.columns([0.5, 3.5, 6, 0.5])
-with c_logo_p:
-    if os.path.exists("logo_lobo.png"):
-        st.markdown("<div style='padding-top: 15px;'>", unsafe_allow_html=True)
-        st.image("logo_lobo.png", width=320)
-        st.markdown("</div>", unsafe_allow_html=True)
+# --- 5. CABECERA ---
+c_logo, c_tit = st.columns([1, 2.5])
+with c_logo:
+    if os.path.exists("logo_lobo.png"): st.image("logo_lobo.png", width=300)
 with c_tit:
-    st.markdown("<h1 style='color: #1E3A8A; font-size: 50px; margin-top: 10px;'>Marcación Sr. Lobo</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='color: #1E3A8A;'>Marcación Sr. Lobo</h1>", unsafe_allow_html=True)
 
 st.divider()
 
@@ -153,23 +137,45 @@ if modo == "Marcación":
             c3, c4 = st.columns(2)
             with c3:
                 if st.button("🚶 SALIDA PERMISO", use_container_width=True, disabled=(not ya_ingreso or ya_salio or en_permiso)):
-                    st.session_state.mostrando_motivo = True
+                    st.session_state.p_motivo = True
             with c4:
                 if st.button("🏠 ENTRADA PERMISO", use_container_width=True, disabled=(not en_permiso)):
                     registrar_en_nube(nombre, dni_limpio, "ENTRADA PERMISO")
 
-            if st.session_state.get("mostrando_motivo", False):
+            if st.session_state.get("p_motivo", False):
                 st.markdown("---")
-                st.warning("⚠️ Indique el motivo de su salida de permiso:")
-                motivo = st.text_input("Escriba el motivo aquí:", key="motivo_permiso_input")
-                if st.button("🚀 CONFIRMAR SALIDA DE PERMISO"):
+                motivo = st.text_input("Indique el motivo del permiso:", key="mot_p")
+                if st.button("CONFIRMAR SALIDA PERMISO"):
                     if motivo:
                         registrar_en_nube(nombre, dni_limpio, "SALIDA PERMISO", motivo)
-                    else:
-                        st.error("Debe escribir un motivo.")
-        else:
-            st.error("DNI no registrado.")
-else:
-    st.header("📋 Reporte Auditado")
+                        st.session_state.p_motivo = False
+                    else: st.error("Escriba un motivo.")
+        else: st.error("DNI no registrado.")
+
+else: # --- PANEL ADMIN RESTAURADO CON FILTROS Y RESUMEN ---
+    st.header("📊 Reporte y Resumen de Asistencia")
     df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
-    st.dataframe(df_h, use_container_width=True)
+    
+    if not df_h.empty:
+        # Filtros
+        c_f1, c_f2 = st.columns(2)
+        with c_f1:
+            f_nom = st.multiselect("Filtrar por Nombre:", options=df_h['Nombre'].unique())
+        with c_f2:
+            f_tipo = st.multiselect("Filtrar por Movimiento:", options=df_h['Tipo'].unique())
+        
+        df_filtrado = df_h.copy()
+        if f_nom: df_filtrado = df_filtrado[df_filtrado['Nombre'].isin(f_nom)]
+        if f_tipo: df_filtrado = df_filtrado[df_filtrado['Tipo'].isin(f_tipo)]
+
+        # Resumen
+        total_tardanza = df_filtrado['Tardanza_Min'].sum()
+        total_descuento = df_filtrado['Descuento_Soles'].sum()
+        
+        c_m1, c_m2 = st.columns(2)
+        c_m1.metric("Total Minutos Tardanza", f"{total_tardanza} min")
+        c_m2.metric("Total Descuento Acumulado", f"S/. {total_descuento:.2f}")
+
+        st.divider()
+        st.dataframe(df_filtrado, use_container_width=True)
+    else: st.info("No hay datos registrados.")
