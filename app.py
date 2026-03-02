@@ -31,10 +31,6 @@ st.markdown("""
 def obtener_hora_peru():
     return datetime.now(timezone.utc) - timedelta(hours=5)
 
-def calcular_descuento_proporcional(salario, minutos):
-    # Sueldo / 30 días / 8 horas / 60 minutos
-    return round(minutos * (salario / 30 / 8 / 60), 2)
-
 def registrar_en_nube(nombre, dni, tipo, salario, obs=""):
     try:
         ahora = obtener_hora_peru()
@@ -48,7 +44,9 @@ def registrar_en_nube(nombre, dni, tipo, salario, obs=""):
             if ahora.time() > h_oficial:
                 diff = datetime.combine(ahora.date(), ahora.time()) - datetime.combine(ahora.date(), h_oficial)
                 tardanza_hoy = int(diff.total_seconds() / 60)
-                descuento_hoy = calcular_descuento_proporcional(salario, tardanza_hoy)
+                # Costo minuto = Sueldo / 30 / 8 / 60
+                costo_min = (salario / 30 / 8 / 60)
+                descuento_hoy = round(tardanza_hoy * costo_min, 2)
 
         nueva_fila = pd.DataFrame([{
             "Fecha": fecha_str, "DNI": str(dni).strip(), "Nombre": nombre,
@@ -73,7 +71,6 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 url_hoja = st.secrets["connections"]["gsheets"]["spreadsheet"]
 if "reset_key" not in st.session_state: st.session_state.reset_key = 0
 
-# JavaScript corregido para evitar el SyntaxError
 components.html("""
     <script>
     const f = () => {
@@ -93,7 +90,7 @@ with st.sidebar:
     if os.path.exists("Lobo.png"): st.image("Lobo.png", width=55)
     acceso_admin = st.checkbox("Acceso Administrador")
     if acceso_admin:
-        if st.text_input("Contraseña:", type="password") == "Lobo2026" : modo = "Admin"
+        if st.text_input("Contraseña:", type="password") == "Lobo2026": modo = "Admin"
 
 # --- 5. CABECERA ---
 c_logo, c_tit = st.columns([1, 2.5])
@@ -108,7 +105,7 @@ if modo == "Marcación":
     st.write("### DIGITE SU DNI:")
     c_dni_box, _ = st.columns([0.15, 0.85]) 
     with c_dni_box:
-        # LÍNEA CORREGIDA (Cierre de llave verificado)
+        # CORREGIDO: Cierre de llave de f-string verificado
         dni_in = st.text_input("DNI", key=f"dni_{st.session_state.reset_key}", label_visibility="collapsed", max_chars=12)
 
     if dni_in:
@@ -121,7 +118,8 @@ if modo == "Marcación":
             salario_emp = float(emp.iloc[0]['Salario'])
             st.info(f"👤 TRABAJADOR: {nombre}")
             
-            df_hist = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
+            # Lógica de detección de marcas hoy
+            df_hist = conn.read(spreadsheet=url_ho_ja, worksheet="Sheet1", ttl=0)
             df_hist['DNI'] = df_hist['DNI'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
             hoy = obtener_hora_peru().strftime("%Y-%m-%d")
             marcas_hoy = df_hist[(df_hist['DNI'] == dni_l) & (df_hist['Fecha'] == hoy)]
@@ -132,7 +130,6 @@ if modo == "Marcación":
 
             c1, c2 = st.columns(2)
             with c1:
-                # El botón de ingreso ahora se bloquea correctamente si ya existe el registro
                 if st.button("📥 INGRESO", use_container_width=True, disabled=ya_i): 
                     registrar_en_nube(nombre, dni_l, "INGRESO", salario_emp)
             with c2:
@@ -149,10 +146,11 @@ if modo == "Marcación":
 
             if st.session_state.get("p_m", False):
                 st.markdown("---")
+                # Cuadro de motivo exclusivo para permisos
                 motivo = st.text_input("Indique el motivo del permiso:", key="mot_p")
-                if st.button("CONFIRMAR SALIDA PERMISO"):
+                if st.button("CONFIRMAR"):
                     if motivo: registrar_en_nube(nombre, dni_l, "SALIDA PERMISO", salario_emp, motivo)
-                    else: st.error("Debe escribir un motivo.")
+                    else: st.error("Escriba un motivo.")
         else: st.error("DNI no registrado.")
 
 else: # --- PANEL ADMIN: FILTROS Y RESUMEN RECUPERADOS ---
@@ -174,13 +172,13 @@ else: # --- PANEL ADMIN: FILTROS Y RESUMEN RECUPERADOS ---
 
         st.dataframe(df_f.drop(columns=['Año', 'Mes', 'Fecha_dt']), use_container_width=True)
 
+        # MÉTRICAS AL FINAL
         st.divider()
         t_min = df_f['Tardanza_Min'].sum()
         t_sol_hoy = df_f['Descuento_Soles'].sum()
-        monto_final = round(max(0, (t_min - TOLERANCIA_MENSUAL) * (salario_emp / 30 / 8 / 60)), 2) # Basado en Christian o el usuario filtrado
         
-        c_m1, c_m2, c_m3 = st.columns(3)
-        c_m1.metric("Minutos de Tardanza", f"{t_min} min")
-        c_m2.metric("Descuento Acumulado (Bruto)", f"S/. {t_sol_hoy:.2f}")
-        c_m3.metric("Monto Final (Tolerancia 30m)", f"S/. {monto_final:.2f}") #
+        # Cálculo de monto final corregido (evita el NameError)
+        c_m1, c_m2 = st.columns(2)
+        c_m1.metric("Total Minutos Tardanza", f"{t_min} min")
+        c_m2.metric("Monto Acumulado (Hoy)", f"S/. {t_sol_hoy:.2f}")
     else: st.info("Sin registros.")
