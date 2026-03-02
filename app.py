@@ -3,6 +3,7 @@ from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 from datetime import datetime, timedelta, timezone
 import os
+import time  # IMPORTACIÓN CORREGIDA PARA EVITAR EL ERROR
 import streamlit.components.v1 as components
 
 # --- 1. CONFIGURACIÓN ---
@@ -11,7 +12,7 @@ COSTO_MINUTO = 0.15
 HORA_ENTRADA_OFICIAL = "08:00:00" 
 TOLERANCIA_MENSUAL = 30 
 
-# --- ESTILOS CSS (LOGOS TRANSPARENTES Y ALTURA) ---
+# --- ESTILOS CSS: LOGOS TRANSPARENTES Y ALTURA ---
 st.markdown("""
     <style>
     .stApp {
@@ -28,34 +29,39 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. FUNCIONES DE LÓGICA (EL MOTOR) ---
+# --- 2. MOTOR DE REGISTRO ---
 def obtener_hora_peru():
     return datetime.now(timezone.utc) - timedelta(hours=5)
 
 def registrar_en_nube(nombre, dni, tipo):
-    ahora = obtener_hora_peru()
-    fecha_str = ahora.strftime("%Y-%m-%d")
-    hora_str = ahora.strftime("%H:%M:%S")
-    
-    tardanza = 0
-    if tipo == "INGRESO":
-        h_oficial = datetime.strptime(HORA_ENTRADA_OFICIAL, "%H:%M:%S").time()
-        if ahora.time() > h_oficial:
-            diff = datetime.combine(ahora.date(), ahora.time()) - datetime.combine(ahora.date(), h_oficial)
-            tardanza = int(diff.total_seconds() / 60)
+    try:
+        ahora = obtener_hora_peru()
+        fecha_str = ahora.strftime("%Y-%m-%d")
+        hora_str = ahora.strftime("%H:%M:%S")
+        
+        tardanza = 0
+        if tipo == "INGRESO":
+            h_oficial = datetime.strptime(HORA_ENTRADA_OFICIAL, "%H:%M:%S").time()
+            if ahora.time() > h_oficial:
+                diff = datetime.combine(ahora.date(), ahora.time()) - datetime.combine(ahora.date(), h_oficial)
+                tardanza = int(diff.total_seconds() / 60)
 
-    nueva_fila = pd.DataFrame([{
-        "Fecha": fecha_str, "DNI": str(dni), "Nombre": nombre,
-        "Tipo": tipo, "Hora": hora_str, "Tardanza_Min": tardanza
-    }])
-    
-    df_actual = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
-    df_final = pd.concat([df_actual, nueva_fila], ignore_index=True)
-    conn.update(spreadsheet=url_hoja, worksheet="Sheet1", data=df_final)
-    st.success(f"✅ {tipo} REGISTRADO: {nombre} ({hora_str})")
-    time.sleep(2)
-    st.session_state.reset_key += 1 # Limpia el DNI
-    st.rerun()
+        nueva_fila = pd.DataFrame([{
+            "Fecha": fecha_str, "DNI": str(dni), "Nombre": nombre,
+            "Tipo": tipo, "Hora": hora_str, "Tardanza_Min": tardanza
+        }])
+        
+        # Conexión y guardado
+        df_actual = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
+        df_final = pd.concat([df_actual, nueva_fila], ignore_index=True)
+        conn.update(spreadsheet=url_hoja, worksheet="Sheet1", data=df_final)
+        
+        st.success(f"✅ {tipo} REGISTRADO: {nombre} ({hora_str})")
+        time.sleep(2) # AHORA SÍ FUNCIONA SIN ERROR
+        st.session_state.reset_key += 1 
+        st.rerun()
+    except Exception as e:
+        st.error(f"Error al registrar: {e}")
 
 # --- 3. CONEXIÓN Y ESTADO ---
 conn = st.connection("gsheets", type=GSheetsConnection)
@@ -89,7 +95,7 @@ if not acceso_admin:
         setInterval(f, 1000);
     </script>""", height=0)
 
-# --- 5. CABECERA PRINCIPAL ---
+# --- 5. CABECERA PRINCIPAL (LOGO ELEVADO) ---
 c_izq, c_logo_p, c_tit, c_der = st.columns([0.5, 3.5, 6, 0.5])
 with c_logo_p:
     if os.path.exists("logo_lobo.png"):
@@ -137,5 +143,4 @@ else: # --- PANEL ADMIN ---
     st.header("📋 Reporte Auditado de Asistencia")
     df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
     if not df_h.empty:
-        # Lógica de filtros y reportes que ya teníamos...
         st.dataframe(df_h, use_container_width=True)
