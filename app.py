@@ -12,7 +12,7 @@ COSTO_MINUTO = 0.15
 HORA_ENTRADA_OFICIAL = "08:00:00" 
 TOLERANCIA_MENSUAL = 30 
 
-# --- ESTILOS CSS: LOGOS TRANSPARENTES Y AJUSTE DE ALTURA ---
+# --- ESTILOS CSS: LOGOS TRANSPARENTES Y ALTURA ---
 st.markdown("""
     <style>
     .stApp {
@@ -48,22 +48,21 @@ def registrar_en_nube(nombre, dni, tipo):
                 tardanza = int(diff.total_seconds() / 60)
 
         nueva_fila = pd.DataFrame([{
-            "Fecha": fecha_str, "DNI": str(dni), "Nombre": nombre,
+            "Fecha": fecha_str, "DNI": str(dni).strip(), "Nombre": nombre,
             "Tipo": tipo, "Hora": hora_str, "Tardanza_Min": tardanza
         }])
         
-        # Limpiamos caché antes de actualizar para asegurar lectura fresca
-        st.cache_data.clear()
+        # Leemos la base de datos actual (forzando datos frescos)
         df_actual = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
         df_final = pd.concat([df_actual, nueva_fila], ignore_index=True)
         conn.update(spreadsheet=url_hoja, worksheet="Sheet1", data=df_final)
         
-        st.success(f"✅ {tipo} REGISTRADO CORRECTAMENTE")
+        st.success(f"✅ {tipo} REGISTRADO")
         time.sleep(1.5)
         st.session_state.reset_key += 1
         st.rerun()
     except Exception as e:
-        st.error(f"Error de conexión: {e}")
+        st.error(f"Error al conectar con la nube: {e}")
 
 # --- 3. CONEXIÓN ---
 conn = st.connection("gsheets", type=GSheetsConnection)
@@ -113,47 +112,51 @@ if modo == "Marcación":
         dni_in = st.text_input("DNI", key=f"dni_{st.session_state.reset_key}", label_visibility="collapsed", max_chars=12)
 
     if dni_in:
-        # Forzamos lectura fresca de empleados
+        # Cargamos empleados (DNI como texto)
         df_emp = pd.read_csv("empleados.csv", dtype={'DNI': str})
-        emp = df_emp[df_emp['DNI'] == str(dni_in).strip()]
+        dni_limpio = str(dni_in).strip()
+        emp = df_emp[df_emp['DNI'] == dni_limpio]
         
         if not emp.empty:
             nombre = emp.iloc[0]['Nombre']
             st.info(f"👤 TRABAJADOR: {nombre}")
             
-            # --- LÓGICA DE BLOQUEO EN TIEMPO REAL ---
-            st.cache_data.clear() # ELIMINA MEMORIA VIEJA
+            # --- LÓGICA DE BLOQUEO (CRÍTICA) ---
+            # Leemos la base de datos de marcaciones asegurando que el DNI se lea como texto
             df_hist = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
-            hoy = obtener_hora_peru().strftime("%Y-%m-%d")
-            marcas_hoy = df_hist[(df_hist['DNI'] == str(dni_in)) & (df_hist['Fecha'] == hoy)]
+            df_hist['DNI'] = df_hist['DNI'].astype(str).str.strip()
             
+            hoy = obtener_hora_peru().strftime("%Y-%m-%d")
+            marcas_hoy = df_hist[(df_hist['DNI'] == dni_limpio) & (df_hist['Fecha'] == hoy)]
+            
+            # Identificamos estados
             ya_ingreso = "INGRESO" in marcas_hoy['Tipo'].values
             ya_salio = "SALIDA" in marcas_hoy['Tipo'].values
             en_permiso = (not marcas_hoy.empty and marcas_hoy.iloc[-1]['Tipo'] == "SALIDA PERMISO")
 
-            # --- BOTONES DINÁMICOS ---
+            # --- RENDERIZADO DE BOTONES CON BLOQUEO REAL ---
             c1, c2 = st.columns(2)
             with c1:
-                # Si el sistema lee que ya existe INGRESO hoy, se bloquea (disabled=True)
-                btn_ing = st.button("📥 INGRESO", use_container_width=True, disabled=ya_ingreso)
-                if btn_ing: registrar_en_nube(nombre, dni_in, "INGRESO")
-            
+                # Si ya ingresó, el botón de INGRESO se deshabilita
+                if st.button("📥 INGRESO", use_container_width=True, disabled=ya_ingreso):
+                    registrar_en_nube(nombre, dni_limpio, "INGRESO")
             with c2:
-                # Solo se habilita si ya ingresó y no ha salido ni está en permiso
-                btn_sal = st.button("📤 SALIDA", use_container_width=True, disabled=(not ya_ingreso or ya_salio or en_permiso))
-                if btn_sal: registrar_en_nube(nombre, dni_in, "SALIDA")
+                # Se habilita si ya ingresó, pero no ha salido ni está en permiso
+                if st.button("📤 SALIDA", use_container_width=True, disabled=(not ya_ingreso or ya_salio or en_permiso)):
+                    registrar_en_nube(nombre, dni_limpio, "SALIDA")
             
             c3, c4 = st.columns(2)
             with c3:
-                btn_s_per = st.button("🚶 SALIDA PERMISO", use_container_width=True, disabled=(not ya_ingreso or ya_salio or en_permiso))
-                if btn_s_per: registrar_en_nube(nombre, dni_in, "SALIDA PERMISO")
+                if st.button("🚶 SALIDA PERMISO", use_container_width=True, disabled=(not ya_ingreso or ya_salio or en_permiso)):
+                    registrar_en_nube(nombre, dni_limpio, "SALIDA PERMISO")
             with c4:
-                btn_e_per = st.button("🏠 ENTRADA PERMISO", use_container_width=True, disabled=(not en_permiso))
-                if btn_e_per: registrar_en_nube(nombre, dni_in, "ENTRADA PERMISO")
+                if st.button("🏠 ENTRADA PERMISO", use_container_width=True, disabled=(not en_permiso)):
+                    registrar_en_nube(nombre, dni_limpio, "ENTRADA PERMISO")
             
             if ya_salio: st.warning("Usted ya registró su salida definitiva hoy.")
         else:
             st.error("DNI no registrado.")
 else:
     st.header("📋 Reporte Auditado")
-    st.dataframe(conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0), use_container_width=True)
+    df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
+    st.dataframe(df_h, use_container_width=True)
