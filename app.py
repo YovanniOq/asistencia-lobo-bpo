@@ -10,6 +10,7 @@ import streamlit.components.v1 as components
 st.set_page_config(page_title="Asistencia Lobo", layout="wide")
 COSTO_MINUTO = 0.15  
 HORA_ENTRADA_OFICIAL = "08:00:00" 
+TOLERANCIA_MENSUAL = 30 
 
 # --- ESTILOS CSS ---
 st.markdown("""
@@ -37,19 +38,19 @@ def registrar_en_nube(nombre, dni, tipo, obs=""):
         fecha_str = ahora.strftime("%Y-%m-%d")
         hora_str = ahora.strftime("%H:%M:%S")
         
-        tardanza = 0
-        descuento = 0
+        tardanza_hoy = 0
+        descuento_hoy = 0
         if tipo == "INGRESO":
             h_oficial = datetime.strptime(HORA_ENTRADA_OFICIAL, "%H:%M:%S").time()
             if ahora.time() > h_oficial:
                 diff = datetime.combine(ahora.date(), ahora.time()) - datetime.combine(ahora.date(), h_oficial)
-                tardanza = int(diff.total_seconds() / 60)
-                descuento = round(tardanza * COSTO_MINUTO, 2)
+                tardanza_hoy = int(diff.total_seconds() / 60)
+                descuento_hoy = round(tardanza_hoy * COSTO_MINUTO, 2) # Cálculo directo sin tolerancia hoy
 
         nueva_fila = pd.DataFrame([{
             "Fecha": fecha_str, "DNI": str(dni).strip(), "Nombre": nombre,
-            "Tipo": tipo, "Hora": hora_str, "Tardanza_Min": tardanza,
-            "Descuento_Soles": descuento, "Observacion": obs
+            "Tipo": tipo, "Hora": hora_str, "Tardanza_Min": tardanza_hoy,
+            "Descuento_Soles": descuento_hoy, "Observacion": obs
         }])
         
         df_hist = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
@@ -63,35 +64,31 @@ def registrar_en_nube(nombre, dni, tipo, obs=""):
     except Exception as e:
         st.error(f"Error: {e}")
 
-# --- 3. CONEXIÓN ---
+# --- 3. CONEXIÓN Y FOCO ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 url_hoja = st.secrets["connections"]["gsheets"]["spreadsheet"]
 if "reset_key" not in st.session_state: st.session_state.reset_key = 0
 
-# --- 4. INTERFAZ LATERAL ---
-modo = "Marcación"
-with st.sidebar:
-    if os.path.exists("Lobo.png"): st.image("Lobo.png", width=55)
-    st.markdown("### Gestión Lobo")
-    acceso_admin = st.checkbox("Acceso Administrador")
-    if acceso_admin:
-        if st.text_input("Contraseña:", type="password") == "Lobo2026": modo = "Admin"
-
-# --- FOCO INTELIGENTE ---
 components.html("""
     <script>
     const f = () => {
         const i = window.parent.document.querySelectorAll('input[type="text"]');
         if (i.length > 0) {
             const active = window.parent.document.activeElement;
-            if (active.tagName !== 'INPUT' && active.tagName !== 'TEXTAREA') {
-                i[0].focus();
-            }
+            if (active.tagName !== 'INPUT' && active.tagName !== 'TEXTAREA') { i[0].focus(); }
         }
     };
     setInterval(f, 2000);
     </script>
 """, height=0)
+
+# --- 4. INTERFAZ LATERAL ---
+modo = "Marcación"
+with st.sidebar:
+    if os.path.exists("Lobo.png"): st.image("Lobo.png", width=55)
+    acceso_admin = st.checkbox("Acceso Administrador")
+    if acceso_admin:
+        if st.text_input("Contraseña:", type="password") == "Lobo2026": modo = "Admin"
 
 # --- 5. CABECERA ---
 c_logo, c_tit = st.columns([1, 2.5])
@@ -110,8 +107,8 @@ if modo == "Marcación":
 
     if dni_in:
         df_emp = pd.read_csv("empleados.csv", dtype={'DNI': str})
-        dni_limpio = str(dni_in).strip()
-        emp = df_emp[df_emp['DNI'] == dni_limpio]
+        dni_l = str(dni_in).strip()
+        emp = df_emp[df_emp['DNI'] == dni_l]
         
         if not emp.empty:
             nombre = emp.iloc[0]['Nombre']
@@ -120,69 +117,62 @@ if modo == "Marcación":
             df_hist = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
             df_hist['DNI'] = df_hist['DNI'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
             hoy = obtener_hora_peru().strftime("%Y-%m-%d")
-            marcas_hoy = df_hist[(df_hist['DNI'] == dni_limpio) & (df_hist['Fecha'] == hoy)]
+            marcas_hoy = df_hist[(df_hist['DNI'] == dni_l) & (df_hist['Fecha'] == hoy)]
             
-            ya_ingreso = "INGRESO" in marcas_hoy['Tipo'].values
-            ya_salio = "SALIDA" in marcas_hoy['Tipo'].values
-            en_permiso = (not marcas_hoy.empty and marcas_hoy.iloc[-1]['Tipo'] == "SALIDA PERMISO")
+            ya_i = "INGRESO" in marcas_hoy['Tipo'].values
+            ya_s = "SALIDA" in marcas_hoy['Tipo'].values
+            en_p = (not marcas_hoy.empty and marcas_hoy.iloc[-1]['Tipo'] == "SALIDA PERMISO")
 
             c1, c2 = st.columns(2)
             with c1:
-                if st.button("📥 INGRESO", use_container_width=True, disabled=ya_ingreso):
-                    registrar_en_nube(nombre, dni_limpio, "INGRESO")
+                if st.button("📥 INGRESO", use_container_width=True, disabled=ya_i): registrar_en_nube(nombre, dni_l, "INGRESO")
             with c2:
-                if st.button("📤 SALIDA", use_container_width=True, disabled=(not ya_ingreso or ya_salio or en_permiso)):
-                    registrar_en_nube(nombre, dni_limpio, "SALIDA")
+                if st.button("📤 SALIDA", use_container_width=True, disabled=(not ya_i or ya_s or en_p)): registrar_en_nube(nombre, dni_l, "SALIDA")
             
             c3, c4 = st.columns(2)
             with c3:
-                if st.button("🚶 SALIDA PERMISO", use_container_width=True, disabled=(not ya_ingreso or ya_salio or en_permiso)):
-                    st.session_state.p_motivo = True
+                if st.button("🚶 SALIDA PERMISO", use_container_width=True, disabled=(not ya_i or ya_s or en_p)): st.session_state.p_m = True
             with c4:
-                if st.button("🏠 ENTRADA PERMISO", use_container_width=True, disabled=(not en_permiso)):
-                    registrar_en_nube(nombre, dni_limpio, "ENTRADA PERMISO")
+                if st.button("🏠 ENTRADA PERMISO", use_container_width=True, disabled=(not en_p)): registrar_en_nube(nombre, dni_l, "ENTRADA PERMISO")
 
-            if st.session_state.get("p_motivo", False):
+            if st.session_state.get("p_m", False):
                 st.markdown("---")
                 motivo = st.text_input("Indique el motivo del permiso:", key="mot_p")
                 if st.button("CONFIRMAR SALIDA PERMISO"):
-                    if motivo:
-                        registrar_en_nube(nombre, dni_limpio, "SALIDA PERMISO", motivo)
-                        st.session_state.p_motivo = False
+                    if motivo: registrar_en_nube(nombre, dni_l, "SALIDA PERMISO", motivo); st.session_state.p_m = False
                     else: st.error("Escriba un motivo.")
         else: st.error("DNI no registrado.")
 
-else: # --- PANEL ADMIN RESTAURADO CON FILTROS POR FECHA Y USUARIO ---
-    st.header("📊 Auditoría de Asistencia")
+else: # --- PANEL ADMIN: FILTROS AÑO / MES ---
+    st.header("📊 Reporte de Asistencia Lobo")
     df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
     
     if not df_h.empty:
-        # Asegurar formato de fecha para el filtro
-        df_h['Fecha'] = pd.to_datetime(df_h['Fecha']).dt.date
+        df_h['Fecha'] = pd.to_datetime(df_h['Fecha'])
+        df_h['Año'] = df_h['Fecha'].dt.year
+        df_h['Mes'] = df_h['Fecha'].dt.month
         
-        # Filtros Superiores
-        c_f1, c_f2 = st.columns(2)
-        with c_f1:
-            rango_fechas = st.date_input("Seleccionar Rango de Fechas:", [df_h['Fecha'].min(), df_h['Fecha'].max()])
-        with c_f2:
-            usuarios_f = st.multiselect("Filtrar por Usuario:", options=df_h['Nombre'].unique())
+        c_a, c_m, c_u = st.columns(3)
+        with c_a: f_anio = st.selectbox("Año:", sorted(df_h['Año'].unique(), reverse=True))
+        with c_m: f_mes = st.selectbox("Mes:", range(1, 13), index=obtener_hora_peru().month-1)
+        with c_u: f_usu = st.multiselect("Usuario (Opcional):", options=df_h['Nombre'].unique())
         
-        # Lógica de Filtrado
-        df_filtrado = df_h.copy()
-        if len(rango_fechas) == 2:
-            df_filtrado = df_filtrado[(df_filtrado['Fecha'] >= rango_fechas[0]) & (df_filtrado['Fecha'] <= rango_fechas[1])]
-        if usuarios_f:
-            df_filtrado = df_filtrado[df_filtrado['Nombre'].isin(usuarios_f)]
+        df_f = df_h[(df_h['Año'] == f_anio) & (df_h['Mes'] == f_mes)]
+        if f_usu: df_f = df_f[df_f['Nombre'].isin(f_usu)]
 
-        # Resumen de Métricas
-        t_min = df_filtrado['Tardanza_Min'].sum()
-        t_soles = df_filtrado['Descuento_Soles'].sum()
+        # --- CÁLCULOS ---
+        total_minutos = df_f['Tardanza_Min'].sum()
+        total_descuento_bruto = df_f['Descuento_Soles'].sum()
+        
+        # Aplicación de tolerancia de 30 min sobre el total mensual filtrado
+        minutos_con_tolerancia = max(0, total_minutos - TOLERANCIA_MENSUAL)
+        monto_final_mes = round(minutos_con_tolerancia * COSTO_MINUTO, 2)
         
         c_m1, c_m2, c_m3 = st.columns(3)
-        c_m1.metric("Registros Encontrados", len(df_filtrado))
-        c_m2.metric("Total Minutos Tardanza", f"{t_min} min")
-        c_m3.metric("Total Descuento", f"S/. {t_soles:.2f}")
+        c_m1.metric("Minutos de Tardanza", f"{total_minutos} min")
+        c_m2.metric("Descuento Acumulado (Hoy)", f"S/. {total_descuento_bruto:.2f}")
+        c_m3.metric("Monto Final (Aplicando Tolerancia 30m)", f"S/. {monto_final_mes:.2f}")
 
         st.divider()
-        st.dataframe(df_filtrado.sort_values(by=['Fecha', 'Hora'], ascending=False), use_container_width=True)
-    else: st.info("No hay datos registrados aún.")
+        st.dataframe(df_f.drop(columns=['Año', 'Mes']), use_container_width=True)
+    else: st.info("Sin registros.")
