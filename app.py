@@ -44,7 +44,7 @@ def registrar_en_nube(nombre, dni, tipo, salario, obs=""):
             if ahora.time() > h_oficial:
                 diff = datetime.combine(ahora.date(), ahora.time()) - datetime.combine(ahora.date(), h_oficial)
                 tardanza_hoy = int(diff.total_seconds() / 60)
-                # Cálculo proporcional al salario de cada empleado
+                # Costo minuto = Sueldo / 30 / 8 / 60
                 costo_min = (salario / 30 / 8 / 60)
                 descuento_hoy = round(tardanza_hoy * costo_min, 2)
 
@@ -54,26 +54,23 @@ def registrar_en_nube(nombre, dni, tipo, salario, obs=""):
             "Descuento_Soles": descuento_hoy, "Observacion": obs
         }])
         
-        # Corrección de variable url_hoja
         df_hist = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
         df_final = pd.concat([df_hist, nueva_fila], ignore_index=True)
         conn.update(spreadsheet=url_hoja, worksheet="Sheet1", data=df_final)
         
         st.success(f"✅ {tipo} REGISTRADO")
-        time.sleep(1)
-        # Limpieza de estados y recarga segura
+        time.sleep(1.2)
         if "p_m" in st.session_state: st.session_state.p_m = False
         st.session_state.reset_key += 1
         st.rerun()
     except Exception as e:
-        st.error(f"Error en la conexión: {e}")
+        st.error(f"Error técnico: {e}")
 
 # --- 3. CONEXIÓN Y FOCO ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 url_hoja = st.secrets["connections"]["gsheets"]["spreadsheet"]
 if "reset_key" not in st.session_state: st.session_state.reset_key = 0
 
-# JavaScript corregido (SyntaxError reparado)
 components.html("""
     <script>
     const f = () => {
@@ -87,15 +84,17 @@ components.html("""
     </script>
 """, height=0)
 
-# --- 4. INTERFAZ LATERAL ---
+# --- 4. INTERFAZ LATERAL (RESTAURADA) ---
 modo = "Marcación"
 with st.sidebar:
     if os.path.exists("Lobo.png"): st.image("Lobo.png", width=55)
+    st.markdown("### Gestión Lobo") # TÍTULO RESTAURADO
+    st.divider()
     acceso_admin = st.checkbox("Acceso Administrador")
     if acceso_admin:
         if st.text_input("Contraseña:", type="password") == "Lobo2026": modo = "Admin"
 
-# --- 5. CABECERA ---
+# --- 5. CABECERA PRINCIPAL ---
 c_logo, c_tit = st.columns([1, 2.5])
 with c_logo:
     if os.path.exists("logo_lobo.png"): st.image("logo_lobo.png", width=300)
@@ -108,7 +107,7 @@ if modo == "Marcación":
     st.write("### DIGITE SU DNI:")
     c_dni_box, _ = st.columns([0.15, 0.85]) 
     with c_dni_box:
-        # LÍNEA CORREGIDA: Sin llaves abiertas
+        # CORRECCIÓN DE SINTAXIS FINAL
         dni_in = st.text_input("DNI", key=f"dni_{st.session_state.reset_key}", label_visibility="collapsed", max_chars=12)
 
     if dni_in:
@@ -121,7 +120,7 @@ if modo == "Marcación":
             salario_v = float(emp.iloc[0]['Salario'])
             st.info(f"👤 TRABAJADOR: {nombre}")
             
-            # Corrección de variable url_hoja para bloqueo
+            # Bloqueo corregido
             df_hist_check = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
             df_hist_check['DNI'] = df_hist_check['DNI'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
             hoy = obtener_hora_peru().strftime("%Y-%m-%d")
@@ -150,12 +149,12 @@ if modo == "Marcación":
             if st.session_state.get("p_m", False):
                 st.markdown("---")
                 motivo = st.text_input("Indique el motivo del permiso:", key="mot_p")
-                if st.button("CONFIRMAR SALIDA PERMISO"):
+                if st.button("CONFIRMAR"):
                     if motivo: registrar_en_nube(nombre, dni_l, "SALIDA PERMISO", salario_v, motivo)
-                    else: st.error("Debe escribir un motivo.")
+                    else: st.error("Escriba un motivo.")
         else: st.error("DNI no registrado.")
 
-else: # --- PANEL ADMIN: FILTROS Y RESUMEN RECUPERADOS ---
+else: # --- PANEL ADMIN ---
     st.header("📊 Reporte de Asistencia Lobo")
     df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
     
@@ -167,22 +166,21 @@ else: # --- PANEL ADMIN: FILTROS Y RESUMEN RECUPERADOS ---
         c_a, c_m, c_u = st.columns(3)
         with c_a: f_anio = st.selectbox("Año:", sorted(df_h['Año'].unique(), reverse=True))
         with c_m: f_mes = st.selectbox("Mes:", range(1, 13), index=obtener_hora_peru().month-1)
-        with c_u: f_usu = st.multiselect("Filtrar por Usuario:", options=df_h['Nombre'].unique())
+        with c_u: f_usu = st.multiselect("Usuario:", options=df_h['Nombre'].unique())
         
         df_f = df_h[(df_h['Año'] == f_anio) & (df_h['Mes'] == f_mes)]
         if f_usu: df_f = df_f[df_f['Nombre'].isin(f_usu)]
 
         st.dataframe(df_f.drop(columns=['Año', 'Mes', 'Fecha_dt']), use_container_width=True)
 
-        # MÉTRICAS AL FINAL (NameError Reparado)
         st.divider()
         t_min = df_f['Tardanza_Min'].sum()
-        t_sol_hoy = df_f['Descuento_Soles'].sum()
+        t_sol = df_f['Descuento_Soles'].sum()
         
         c_m1, c_m2, c_m3 = st.columns(3)
         c_m1.metric("Minutos de Tardanza", f"{t_min} min")
-        c_m2.metric("Descuento Acumulado (Hoy)", f"S/. {t_sol_hoy:.2f}")
-        # Cálculo de tolerancia mensual dinámico
-        monto_final_val = max(0, (t_min - TOLERANCIA_MENSUAL) * (t_sol_hoy / (t_min if t_min > 0 else 1)))
-        c_m3.metric("Monto Final (Tolerancia 30m)", f"S/. {round(monto_final_val, 2)}")
+        c_m2.metric("Descuento Acumulado (Hoy)", f"S/. {t_sol:.2f}")
+        # Estimación de descuento final con tolerancia
+        m_final = max(0, (t_min - TOLERANCIA_MENSUAL) * (t_sol / (t_min if t_min > 0 else 1)))
+        c_m3.metric("Monto Final (Tolerancia 30m)", f"S/. {round(m_final, 2)}") #
     else: st.info("Sin registros.")
