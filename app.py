@@ -12,7 +12,7 @@ COSTO_MINUTO = 0.15
 HORA_ENTRADA_OFICIAL = "08:00:00" 
 TOLERANCIA_MENSUAL = 30 
 
-# --- ESTILOS CSS: LOGOS TRANSPARENTES Y ALTURA ---
+# --- ESTILOS CSS: LOGOS TRANSPARENTES Y AJUSTE DE ALTURA ---
 st.markdown("""
     <style>
     .stApp {
@@ -26,7 +26,6 @@ st.markdown("""
         position: relative;
     }
     img { background-color: transparent !important; mix-blend-mode: multiply; border: none !important; }
-    .sidebar-brand-horizontal { display: flex; align-items: center; gap: 15px; margin-bottom: 25px; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -52,7 +51,7 @@ def registrar_en_nube(nombre, dni, tipo):
             "Tipo": tipo, "Hora": hora_str, "Tardanza_Min": tardanza
         }])
         
-        # Leemos la base de datos actual (forzando datos frescos)
+        # FORZAMOS LECTURA FRESCA PARA COMPARAR
         df_actual = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
         df_final = pd.concat([df_actual, nueva_fila], ignore_index=True)
         conn.update(spreadsheet=url_hoja, worksheet="Sheet1", data=df_final)
@@ -62,7 +61,7 @@ def registrar_en_nube(nombre, dni, tipo):
         st.session_state.reset_key += 1
         st.rerun()
     except Exception as e:
-        st.error(f"Error al conectar con la nube: {e}")
+        st.error(f"Error: {e}")
 
 # --- 3. CONEXIÓN ---
 conn = st.connection("gsheets", type=GSheetsConnection)
@@ -72,10 +71,8 @@ if "reset_key" not in st.session_state: st.session_state.reset_key = 0
 # --- 4. INTERFAZ LATERAL ---
 modo = "Marcación"
 with st.sidebar:
-    st.markdown("<div class='sidebar-brand-horizontal'>", unsafe_allow_html=True)
     if os.path.exists("Lobo.png"): st.image("Lobo.png", width=55)
-    st.markdown("<h2 style='color: #1E3A8A; font-size: 21px; margin: 0; padding-top: 15px;'>Gestión Lobo</h2>", unsafe_allow_html=True)
-    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("<h2 style='color: #1E3A8A; font-size: 21px; margin: 0;'>Gestión Lobo</h2>", unsafe_allow_html=True)
     
     st.divider()
     acceso_admin = st.checkbox("Acceso Administrador")
@@ -85,11 +82,11 @@ with st.sidebar:
 
 # --- FOCO INTELIGENTE ---
 if not acceso_admin:
-    components.html(f"""<script>
-        const f = () => {{
+    components.html("""<script>
+        const f = () => {
             const i = window.parent.document.querySelectorAll('input[type="text"]');
             if (i.length > 0 && window.parent.document.activeElement !== i[0]) i[0].focus();
-        }};
+        };
         setInterval(f, 1000);
     </script>""", height=0)
 
@@ -101,18 +98,15 @@ with c_logo_p:
         st.image("logo_lobo.png", width=320)
         st.markdown("</div>", unsafe_allow_html=True)
 with c_tit:
-    st.markdown("<div style='padding-top: 15px;'><h1 style='color: #1E3A8A; font-size: 50px; margin-bottom: 0px;'>Marcación Sr. Lobo</h1><h2 style='color: #444; font-size: 26px; margin-top: -10px;'>Sr. Lobo BPO Solutions</h2></div>", unsafe_allow_html=True)
+    st.markdown("<h1 style='color: #1E3A8A; font-size: 50px;'>Marcación Sr. Lobo</h1>", unsafe_allow_html=True)
 
 st.divider()
 
 if modo == "Marcación":
     st.write("### DIGITE SU DNI:")
-    c_dni, _ = st.columns([1, 4])
-    with c_dni:
-        dni_in = st.text_input("DNI", key=f"dni_{st.session_state.reset_key}", label_visibility="collapsed", max_chars=12)
+    dni_in = st.text_input("DNI", key=f"dni_{st.session_state.reset_key}", label_visibility="collapsed", max_chars=12)
 
     if dni_in:
-        # Cargamos empleados (DNI como texto)
         df_emp = pd.read_csv("empleados.csv", dtype={'DNI': str})
         dni_limpio = str(dni_in).strip()
         emp = df_emp[df_emp['DNI'] == dni_limpio]
@@ -121,27 +115,27 @@ if modo == "Marcación":
             nombre = emp.iloc[0]['Nombre']
             st.info(f"👤 TRABAJADOR: {nombre}")
             
-            # --- LÓGICA DE BLOQUEO (CRÍTICA) ---
-            # Leemos la base de datos de marcaciones asegurando que el DNI se lea como texto
+            # --- LÓGICA DE BLOQUEO REAL ---
+            # Leemos la nube asegurando que DNI sea texto para comparar bien
             df_hist = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
             df_hist['DNI'] = df_hist['DNI'].astype(str).str.strip()
             
             hoy = obtener_hora_peru().strftime("%Y-%m-%d")
             marcas_hoy = df_hist[(df_hist['DNI'] == dni_limpio) & (df_hist['Fecha'] == hoy)]
             
-            # Identificamos estados
+            # Estados de marcación
             ya_ingreso = "INGRESO" in marcas_hoy['Tipo'].values
             ya_salio = "SALIDA" in marcas_hoy['Tipo'].values
             en_permiso = (not marcas_hoy.empty and marcas_hoy.iloc[-1]['Tipo'] == "SALIDA PERMISO")
 
-            # --- RENDERIZADO DE BOTONES CON BLOQUEO REAL ---
+            # --- RENDERIZADO DE BOTONES ---
             c1, c2 = st.columns(2)
             with c1:
-                # Si ya ingresó, el botón de INGRESO se deshabilita
+                # Se BLOQUEA si ya hay un ingreso hoy
                 if st.button("📥 INGRESO", use_container_width=True, disabled=ya_ingreso):
                     registrar_en_nube(nombre, dni_limpio, "INGRESO")
             with c2:
-                # Se habilita si ya ingresó, pero no ha salido ni está en permiso
+                # Se HABILITA solo si ya entró y no ha salido definitivamente
                 if st.button("📤 SALIDA", use_container_width=True, disabled=(not ya_ingreso or ya_salio or en_permiso)):
                     registrar_en_nube(nombre, dni_limpio, "SALIDA")
             
@@ -158,5 +152,4 @@ if modo == "Marcación":
             st.error("DNI no registrado.")
 else:
     st.header("📋 Reporte Auditado")
-    df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
-    st.dataframe(df_h, use_container_width=True)
+    st.dataframe(conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0), use_container_width=True)
