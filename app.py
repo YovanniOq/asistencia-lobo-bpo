@@ -11,7 +11,7 @@ st.set_page_config(page_title="Asistencia Lobo", layout="wide")
 HORA_ENTRADA_OFICIAL = "08:00:00" 
 TOLERANCIA_MENSUAL = 30 
 
-# --- ESTILOS CSS ---
+# --- ESTILOS CSS (Ajuste de alineación en Sidebar) ---
 st.markdown("""
     <style>
     .stApp {
@@ -22,6 +22,16 @@ st.markdown("""
     .main .block-container {
         background-color: rgba(255, 255, 255, 0.94);
         padding: 3rem; border-radius: 20px; box-shadow: 0 15px 35px rgba(0,0,0,0.1);
+    }
+    /* Alineación de Logo y Título en Sidebar */
+    [data-testid="stSidebar"] .stImage {
+        margin-bottom: -15px;
+    }
+    .sidebar-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 20px;
     }
     img { background-color: transparent !important; mix-blend-mode: multiply; border: none !important; }
     </style>
@@ -44,7 +54,7 @@ def registrar_en_nube(nombre, dni, tipo, salario, obs=""):
             if ahora.time() > h_oficial:
                 diff = datetime.combine(ahora.date(), ahora.time()) - datetime.combine(ahora.date(), h_oficial)
                 tardanza_hoy = int(diff.total_seconds() / 60)
-                # Costo minuto = Sueldo / 30 / 8 / 60
+                # Cálculo proporcional al salario (Sueldo/30/8/60)
                 costo_min = (salario / 30 / 8 / 60)
                 descuento_hoy = round(tardanza_hoy * costo_min, 2)
 
@@ -84,11 +94,16 @@ components.html("""
     </script>
 """, height=0)
 
-# --- 4. INTERFAZ LATERAL (RESTAURADA) ---
+# --- 4. INTERFAZ LATERAL ---
 modo = "Marcación"
 with st.sidebar:
-    if os.path.exists("Lobo.png"): st.image("Lobo.png", width=55)
-    st.markdown("### Gestión Lobo") # TÍTULO RESTAURADO
+    # Contenedor alineado para Logo y Título
+    col_logo, col_text = st.columns([0.3, 0.7])
+    with col_logo:
+        if os.path.exists("Lobo.png"): st.image("Lobo.png", width=50)
+    with col_text:
+        st.markdown("<h3 style='margin-top: 10px; color: #1E3A8A;'>Gestión Lobo</h3>", unsafe_allow_html=True)
+    
     st.divider()
     acceso_admin = st.checkbox("Acceso Administrador")
     if acceso_admin:
@@ -107,7 +122,6 @@ if modo == "Marcación":
     st.write("### DIGITE SU DNI:")
     c_dni_box, _ = st.columns([0.15, 0.85]) 
     with c_dni_box:
-        # CORRECCIÓN DE SINTAXIS FINAL
         dni_in = st.text_input("DNI", key=f"dni_{st.session_state.reset_key}", label_visibility="collapsed", max_chars=12)
 
     if dni_in:
@@ -120,7 +134,6 @@ if modo == "Marcación":
             salario_v = float(emp.iloc[0]['Salario'])
             st.info(f"👤 TRABAJADOR: {nombre}")
             
-            # Bloqueo corregido
             df_hist_check = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
             df_hist_check['DNI'] = df_hist_check['DNI'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
             hoy = obtener_hora_peru().strftime("%Y-%m-%d")
@@ -179,8 +192,8 @@ else: # --- PANEL ADMIN ---
         
         c_m1, c_m2, c_m3 = st.columns(3)
         c_m1.metric("Minutos de Tardanza", f"{t_min} min")
-        c_m2.metric("Descuento Acumulado (Hoy)", f"S/. {t_sol:.2f}")
-        # Estimación de descuento final con tolerancia
+        c_m2.metric("Descuento Acumulado", f"S/. {t_sol:.2f}")
+        # Estimación con tolerancia de 30 min
         m_final = max(0, (t_min - TOLERANCIA_MENSUAL) * (t_sol / (t_min if t_min > 0 else 1)))
-        c_m3.metric("Monto Final (Tolerancia 30m)", f"S/. {round(m_final, 2)}") #
+        c_m3.metric("Monto Final (Tolerancia 30m)", f"S/. {round(m_final, 2)}")
     else: st.info("Sin registros.")
