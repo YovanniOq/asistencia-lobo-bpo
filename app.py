@@ -11,7 +11,7 @@ st.set_page_config(page_title="Asistencia Lobo", layout="wide")
 HORA_ENTRADA_OFICIAL = "08:00:00" 
 TOLERANCIA_MENSUAL = 30 
 
-# --- ESTILOS CSS (Ajuste de alineación en Sidebar) ---
+# --- ESTILOS CSS ---
 st.markdown("""
     <style>
     .stApp {
@@ -23,15 +23,8 @@ st.markdown("""
         background-color: rgba(255, 255, 255, 0.94);
         padding: 3rem; border-radius: 20px; box-shadow: 0 15px 35px rgba(0,0,0,0.1);
     }
-    /* Alineación de Logo y Título en Sidebar */
     [data-testid="stSidebar"] .stImage {
         margin-bottom: -15px;
-    }
-    .sidebar-header {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        margin-bottom: 20px;
     }
     img { background-color: transparent !important; mix-blend-mode: multiply; border: none !important; }
     </style>
@@ -40,6 +33,11 @@ st.markdown("""
 # --- 2. MOTOR DE LOGICA ---
 def obtener_hora_peru():
     return datetime.now(timezone.utc) - timedelta(hours=5)
+
+# OPTIMIZACIÓN DE ARRANQUE: Caché de conexión
+@st.cache_resource(ttl=600)
+def obtener_conexion():
+    return st.connection("gsheets", type=GSheetsConnection)
 
 def registrar_en_nube(nombre, dni, tipo, salario, obs=""):
     try:
@@ -54,7 +52,6 @@ def registrar_en_nube(nombre, dni, tipo, salario, obs=""):
             if ahora.time() > h_oficial:
                 diff = datetime.combine(ahora.date(), ahora.time()) - datetime.combine(ahora.date(), h_oficial)
                 tardanza_hoy = int(diff.total_seconds() / 60)
-                # Cálculo proporcional al salario (Sueldo/30/8/60)
                 costo_min = (salario / 30 / 8 / 60)
                 descuento_hoy = round(tardanza_hoy * costo_min, 2)
 
@@ -64,6 +61,8 @@ def registrar_en_nube(nombre, dni, tipo, salario, obs=""):
             "Descuento_Soles": descuento_hoy, "Observacion": obs
         }])
         
+        conn = obtener_conexion()
+        url_hoja = st.secrets["connections"]["gsheets"]["spreadsheet"]
         df_hist = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
         df_final = pd.concat([df_hist, nueva_fila], ignore_index=True)
         conn.update(spreadsheet=url_hoja, worksheet="Sheet1", data=df_final)
@@ -77,8 +76,6 @@ def registrar_en_nube(nombre, dni, tipo, salario, obs=""):
         st.error(f"Error técnico: {e}")
 
 # --- 3. CONEXIÓN Y FOCO ---
-conn = st.connection("gsheets", type=GSheetsConnection)
-url_hoja = st.secrets["connections"]["gsheets"]["spreadsheet"]
 if "reset_key" not in st.session_state: st.session_state.reset_key = 0
 
 components.html("""
@@ -97,7 +94,6 @@ components.html("""
 # --- 4. INTERFAZ LATERAL ---
 modo = "Marcación"
 with st.sidebar:
-    # Contenedor alineado para Logo y Título
     col_logo, col_text = st.columns([0.3, 0.7])
     with col_logo:
         if os.path.exists("Lobo.png"): st.image("Lobo.png", width=50)
@@ -134,6 +130,8 @@ if modo == "Marcación":
             salario_v = float(emp.iloc[0]['Salario'])
             st.info(f"👤 TRABAJADOR: {nombre}")
             
+            conn = obtener_conexion()
+            url_hoja = st.secrets["connections"]["gsheets"]["spreadsheet"]
             df_hist_check = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
             df_hist_check['DNI'] = df_hist_check['DNI'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
             hoy = obtener_hora_peru().strftime("%Y-%m-%d")
@@ -169,6 +167,8 @@ if modo == "Marcación":
 
 else: # --- PANEL ADMIN ---
     st.header("📊 Reporte de Asistencia Lobo")
+    conn = obtener_conexion()
+    url_hoja = st.secrets["connections"]["gsheets"]["spreadsheet"]
     df_h = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
     
     if not df_h.empty:
@@ -193,7 +193,6 @@ else: # --- PANEL ADMIN ---
         c_m1, c_m2, c_m3 = st.columns(3)
         c_m1.metric("Minutos de Tardanza", f"{t_min} min")
         c_m2.metric("Descuento Acumulado", f"S/. {t_sol:.2f}")
-        # Estimación con tolerancia de 30 min
         m_final = max(0, (t_min - TOLERANCIA_MENSUAL) * (t_sol / (t_min if t_min > 0 else 1)))
         c_m3.metric("Monto Final (Tolerancia 30m)", f"S/. {round(m_final, 2)}")
     else: st.info("Sin registros.")
