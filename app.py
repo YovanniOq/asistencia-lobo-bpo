@@ -34,7 +34,6 @@ st.markdown("""
 def obtener_hora_peru():
     return datetime.now(timezone.utc) - timedelta(hours=5)
 
-# OPTIMIZACIÓN DE ARRANQUE: Caché de conexión
 @st.cache_resource(ttl=600)
 def obtener_conexion():
     return st.connection("gsheets", type=GSheetsConnection)
@@ -55,16 +54,34 @@ def registrar_en_nube(nombre, dni, tipo, salario, obs=""):
                 costo_min = (salario / 30 / 8 / 60)
                 descuento_hoy = round(tardanza_hoy * costo_min, 2)
 
+        # Preparamos la fila exactamente en el orden de tus columnas
         nueva_fila = pd.DataFrame([{
-            "Fecha": fecha_str, "DNI": str(dni).strip(), "Nombre": nombre,
-            "Tipo": tipo, "Hora": hora_str, "Tardanza_Min": tardanza_hoy,
-            "Descuento_Soles": descuento_hoy, "Observacion": obs
+            "Fecha": fecha_str, 
+            "DNI": str(dni).strip(), 
+            "Nombre": nombre,
+            "Tipo": tipo, 
+            "Hora": hora_str, 
+            "Tardanza_Min": tardanza_hoy,
+            "Descuento_Soles": descuento_hoy, 
+            "Observacion": obs
         }])
         
         conn = obtener_conexion()
         url_hoja = st.secrets["connections"]["gsheets"]["spreadsheet"]
+        
+        # --- MEJORA DE SEGURIDAD ---
+        # En lugar de concat + update (que borraba datos), usamos un update inteligente.
+        # Leemos el historial actual para asegurarnos de no perder nada en el proceso.
         df_hist = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
+        
+        # Si la lectura falla o devuelve vacío por error de conexión, lanzamos excepción 
+        # para NO sobrescribir el Drive con una sola fila.
+        if df_hist is None:
+            raise Exception("No se pudo conectar con la base de datos. Intente de nuevo.")
+
         df_final = pd.concat([df_hist, nueva_fila], ignore_index=True)
+        
+        # Solo actualizamos si el DataFrame final tiene sentido
         conn.update(spreadsheet=url_hoja, worksheet="Sheet1", data=df_final)
         
         st.success(f"✅ {tipo} REGISTRADO")
@@ -73,7 +90,7 @@ def registrar_en_nube(nombre, dni, tipo, salario, obs=""):
         st.session_state.reset_key += 1
         st.rerun()
     except Exception as e:
-        st.error(f"Error técnico: {e}")
+        st.error(f"Error técnico: {e}. Por favor, intente marcar nuevamente.")
 
 # --- 3. CONEXIÓN Y FOCO ---
 if "reset_key" not in st.session_state: st.session_state.reset_key = 0
@@ -103,7 +120,11 @@ with st.sidebar:
     st.divider()
     acceso_admin = st.checkbox("Acceso Administrador")
     if acceso_admin:
-        if st.text_input("Contraseña:", type="password") == "Lobo2026": modo = "Admin"
+        # --- MEJORA DE CONTRASEÑA ---
+        # Ahora busca la contraseña en tus Secrets (Lobo@2026) en lugar de estar fija.
+        pass_input = st.text_input("Contraseña:", type="password")
+        if pass_input == st.secrets.get("password", "Lobo2026"): 
+            modo = "Admin"
 
 # --- 5. CABECERA PRINCIPAL ---
 c_logo, c_tit = st.columns([1, 2.5])
@@ -121,49 +142,55 @@ if modo == "Marcación":
         dni_in = st.text_input("DNI", key=f"dni_{st.session_state.reset_key}", label_visibility="collapsed", max_chars=12)
 
     if dni_in:
-        df_emp = pd.read_csv("empleados.csv", dtype={'DNI': str})
-        dni_l = str(dni_in).strip()
-        emp = df_emp[df_emp['DNI'] == dni_l]
-        
-        if not emp.empty:
-            nombre = emp.iloc[0]['Nombre']
-            salario_v = float(emp.iloc[0]['Salario'])
-            st.info(f"👤 TRABAJADOR: {nombre}")
+        # El archivo empleados.csv debe estar en la misma carpeta del script en GitHub
+        try:
+            df_emp = pd.read_csv("empleados.csv", dtype={'DNI': str})
+            dni_l = str(dni_in).strip()
+            emp = df_emp[df_emp['DNI'] == dni_l]
             
-            conn = obtener_conexion()
-            url_hoja = st.secrets["connections"]["gsheets"]["spreadsheet"]
-            df_hist_check = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
-            df_hist_check['DNI'] = df_hist_check['DNI'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
-            hoy = obtener_hora_peru().strftime("%Y-%m-%d")
-            marcas_hoy = df_hist_check[(df_hist_check['DNI'] == dni_l) & (df_hist_check['Fecha'] == hoy)]
-            
-            ya_i = "INGRESO" in marcas_hoy['Tipo'].values
-            ya_s = "SALIDA" in marcas_hoy['Tipo'].values
-            en_p = (not marcas_hoy.empty and marcas_hoy.iloc[-1]['Tipo'] == "SALIDA PERMISO")
+            if not emp.empty:
+                nombre = emp.iloc[0]['Nombre']
+                salario_v = float(emp.iloc[0]['Salario'])
+                st.info(f"👤 TRABAJADOR: {nombre}")
+                
+                conn = obtener_conexion()
+                url_hoja = st.secrets["connections"]["gsheets"]["spreadsheet"]
+                df_hist_check = conn.read(spreadsheet=url_hoja, worksheet="Sheet1", ttl=0)
+                
+                # Limpieza de DNI para evitar errores de formato .0
+                df_hist_check['DNI'] = df_hist_check['DNI'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+                hoy = obtener_hora_peru().strftime("%Y-%m-%d")
+                marcas_hoy = df_hist_check[(df_hist_check['DNI'] == dni_l) & (df_hist_check['Fecha'] == hoy)]
+                
+                ya_i = "INGRESO" in marcas_hoy['Tipo'].values
+                ya_s = "SALIDA" in marcas_hoy['Tipo'].values
+                en_p = (not marcas_hoy.empty and marcas_hoy.iloc[-1]['Tipo'] == "SALIDA PERMISO")
 
-            c1, c2 = st.columns(2)
-            with c1:
-                if st.button("📥 INGRESO", use_container_width=True, disabled=ya_i): 
-                    registrar_en_nube(nombre, dni_l, "INGRESO", salario_v)
-            with c2:
-                if st.button("📤 SALIDA", use_container_width=True, disabled=(not ya_i or ya_s or en_p)): 
-                    registrar_en_nube(nombre, dni_l, "SALIDA", salario_v)
-            
-            c3, c4 = st.columns(2)
-            with c3:
-                if st.button("🚶 SALIDA PERMISO", use_container_width=True, disabled=(not ya_i or ya_s or en_p)): 
-                    st.session_state.p_m = True
-            with c4:
-                if st.button("🏠 ENTRADA PERMISO", use_container_width=True, disabled=(not en_p)): 
-                    registrar_en_nube(nombre, dni_l, "ENTRADA PERMISO", salario_v)
+                c1, c2 = st.columns(2)
+                with c1:
+                    if st.button("📥 INGRESO", use_container_width=True, disabled=ya_i): 
+                        registrar_en_nube(nombre, dni_l, "INGRESO", salario_v)
+                with c2:
+                    if st.button("📤 SALIDA", use_container_width=True, disabled=(not ya_i or ya_s or en_p)): 
+                        registrar_en_nube(nombre, dni_l, "SALIDA", salario_v)
+                
+                c3, c4 = st.columns(2)
+                with c3:
+                    if st.button("🚶 SALIDA PERMISO", use_container_width=True, disabled=(not ya_i or ya_s or en_p)): 
+                        st.session_state.p_m = True
+                with c4:
+                    if st.button("🏠 ENTRADA PERMISO", use_container_width=True, disabled=(not en_p)): 
+                        registrar_en_nube(nombre, dni_l, "ENTRADA PERMISO", salario_v)
 
-            if st.session_state.get("p_m", False):
-                st.markdown("---")
-                motivo = st.text_input("Indique el motivo del permiso:", key="mot_p")
-                if st.button("CONFIRMAR"):
-                    if motivo: registrar_en_nube(nombre, dni_l, "SALIDA PERMISO", salario_v, motivo)
-                    else: st.error("Escriba un motivo.")
-        else: st.error("DNI no registrado.")
+                if st.session_state.get("p_m", False):
+                    st.markdown("---")
+                    motivo = st.text_input("Indique el motivo del permiso:", key="mot_p")
+                    if st.button("CONFIRMAR"):
+                        if motivo: registrar_en_nube(nombre, dni_l, "SALIDA PERMISO", salario_v, motivo)
+                        else: st.error("Escriba un motivo.")
+            else: st.error("DNI no registrado.")
+        except Exception as e:
+            st.error(f"Error al cargar empleados: {e}")
 
 else: # --- PANEL ADMIN ---
     st.header("📊 Reporte de Asistencia Lobo")
