@@ -1,0 +1,45 @@
+name: Despertar App Asistencia Lobo
+
+# Se ejecuta automáticamente cada 30 minutos entre las 7:00 am y las 7:00 pm
+# (hora de Perú), todos los días. También se puede ejecutar manualmente
+# desde la pestaña "Actions" del repositorio con el botón "Run workflow".
+on:
+  schedule:
+    - cron: '*/30 12-23 * * *'
+  workflow_dispatch:
+
+jobs:
+  despertar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Instalar Playwright
+        run: |
+          pip install playwright
+          playwright install --with-deps chromium
+
+      - name: Visitar la app y despertarla si está dormida
+        run: |
+          python - <<'EOF'
+          from playwright.sync_api import sync_playwright
+
+          # IMPORTANTE: reemplaza esta URL por la real de tu app si es distinta
+          URL = "https://asistencia-lobo-bpo.streamlit.app/"
+
+          with sync_playwright() as p:
+              browser = p.chromium.launch()
+              page = browser.new_page()
+              page.goto(URL, wait_until="domcontentloaded", timeout=120000)
+              page.wait_for_timeout(5000)
+
+              boton = page.get_by_role("button", name="Yes, get this app back up!")
+              if boton.count() > 0:
+                  print("La app estaba dormida. Haciendo clic para despertarla...")
+                  boton.click()
+                  page.wait_for_timeout(60000)
+                  print("Listo, la app debería estar despertando.")
+              else:
+                  print("La app ya estaba despierta. Nada que hacer.")
+
+              browser.close()
+          EOF
