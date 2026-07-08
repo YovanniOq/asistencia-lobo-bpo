@@ -73,6 +73,13 @@ def obtener_hoja_escritura():
         sh = gc.open_by_key(url_hoja)
     return sh.worksheet(NOMBRE_HOJA)
 
+@st.cache_data(ttl=300)
+def obtener_encabezados_hoja():
+    """Lee la fila 1 (encabezados) tal cual están hoy en tu Google Sheet.
+    Se cachea 5 minutos para no gastar cuota de la API en cada marcación."""
+    hoja = obtener_hoja_escritura()
+    return hoja.row_values(1)
+
 def registrar_en_nube(nombre, dni, tipo, salario, obs=""):
     try:
         ahora = obtener_hora_peru()
@@ -89,14 +96,25 @@ def registrar_en_nube(nombre, dni, tipo, salario, obs=""):
                 costo_min = (salario / 30 / 8 / 60)
                 descuento_hoy = round(tardanza_hoy * costo_min, 2)
 
-        # Orden EXACTO de tus columnas en el Sheet:
-        # Fecha, DNI, Nombre, Tipo, Hora, Tardanza_Min, Descuento_Soles, Observacion
-        fila = [
-            fecha_str, str(dni).strip(), nombre, tipo,
-            hora_str, tardanza_hoy, descuento_hoy, obs,
-        ]
+        # --- MEJORA: en vez de asumir un orden fijo de columnas, leemos los
+        # encabezados REALES de tu hoja (fila 1) y armamos la fila nueva
+        # calzando cada dato con su columna correspondiente por NOMBRE.
+        # Así, sin importar el orden en que tengas tus columnas hoy o en el
+        # futuro, cada valor siempre cae en la columna que le corresponde.
+        datos = {
+            "Fecha": fecha_str,
+            "DNI": str(dni).strip(),
+            "Nombre": nombre,
+            "Tipo": tipo,
+            "Hora": hora_str,
+            "Tardanza_Min": tardanza_hoy,
+            "Descuento_Soles": descuento_hoy,
+            "Observacion": obs,
+        }
 
         hoja = obtener_hoja_escritura()
+        encabezados = obtener_encabezados_hoja()
+        fila = [datos.get(col, "") for col in encabezados]
         hoja.append_row(fila, value_input_option="USER_ENTERED")
 
         # Invalidamos la caché de lectura para que el próximo conn.read()
