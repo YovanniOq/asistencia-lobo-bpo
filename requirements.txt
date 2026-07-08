@@ -1,3 +1,5 @@
 pandas
 st-gsheets-connection
 shillelagh
+gspread
+google-auth
