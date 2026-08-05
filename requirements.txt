@@ -3,3 +3,4 @@ st-gsheets-connection
 shillelagh
 gspread
 google-auth
+starlette<1.0
